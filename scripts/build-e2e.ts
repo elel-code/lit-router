@@ -6,7 +6,12 @@ const result = await esbuild.build({
   format: "esm",
   outfile: "dist-e2e/router.bundle.js",
   platform: "browser",
-  target: "esnext",
+  target: "es2022",
+  tsconfigRaw: {
+    compilerOptions: {
+      experimentalDecorators: false,
+    },
+  },
 });
 
 if (result.errors.length) {
