@@ -28,6 +28,7 @@ import {
   type RouteLoadContext,
   type RouteLoadingDetail,
   type RouteLocation,
+  type RouteMeta,
   type RouteNotFoundDetail,
   type RouteParamsInput,
   type RouteParamValue,
@@ -35,6 +36,10 @@ import {
   type RouteQueryValue,
   Router,
   type RouterChangeDetail,
+  type RouteResolveOptions,
+  type RouterEvent,
+  type RouterEventListener,
+  type RouterEventMap,
   type RouterLinkAttributes,
   type RouterLinkOptions,
   RouterView,
@@ -232,6 +237,26 @@ Navigates with replace semantics.
 
 Accepted inputs are the same as `push()`.
 
+#### `router.resolveUrl(url): RouterChangeDetail | null`
+
+Resolves a string or `URL` without navigating. Returns `null` when the URL is
+outside `basePath` or no route branch matches.
+
+```ts
+const match = router.resolveUrl("/settings/profile");
+```
+
+#### `router.resolveNamed(name, options?): RouterChangeDetail | null`
+
+Builds a named-route URL and resolves it without navigating.
+
+```ts
+const match = router.resolveNamed("message", {
+  params: { id: "42" },
+  query: { tab: "activity" },
+});
+```
+
 #### `router.link(location): string`
 
 Builds an application-relative href from a named route.
@@ -273,6 +298,31 @@ Listen on the `Router` instance:
 router.addEventListener("route-change", (event) => {
   console.log(event.detail.localPathname);
 });
+```
+
+`Router.addEventListener()` is typed for the built-in router event names, so
+known events expose the corresponding `CustomEvent.detail` type without a local
+cast.
+
+The exported helper types are:
+
+```ts
+interface RouterEventMap {
+  "route-change": RouterChangeDetail;
+  "route-error": RouteErrorDetail;
+  "route-loading-start": RouteLoadingDetail;
+  "route-loading-end": RouteLoadingDetail;
+  "route-not-found": RouteNotFoundDetail;
+  "route-tree-change": RouteTreeChangeDetail;
+}
+
+type RouterEvent<K extends keyof RouterEventMap> = CustomEvent<
+  RouterEventMap[K]
+>;
+type RouterEventListener<K extends keyof RouterEventMap> = (
+  this: Router,
+  event: RouterEvent<K>,
+) => void;
 ```
 
 #### `route-change`
@@ -473,6 +523,7 @@ interface RouteDefinition {
   guard?: RouteGuard;
   beforeLeave?: RouteLeaveGuard;
   load?: (context?: RouteLoadContext) => Promise<unknown>;
+  meta?: RouteMeta;
   props?: Record<string, unknown>;
 }
 ```
@@ -492,6 +543,9 @@ Field notes:
 - `beforeLeave`: leave guard for this route when its branch segment unloads
 - `load`: first-entry async loader. Its resolved value is ignored; use it for
   code splitting or side effects only. Receives `{ signal }` for cancellation.
+- `meta`: route metadata for guards, events, and route context. It is shallow
+  cloned on input, shallow frozen in read-only snapshots, and never assigned to
+  the rendered DOM element.
 - `props`: extra properties assigned onto the rendered element with a shallow
   `Object.assign`
 
@@ -509,6 +563,16 @@ Matching semantics:
 ```ts
 interface RouteLocation {
   name: string;
+  params?: RouteParamsInput;
+  query?: RouteQueryInit;
+  hash?: string;
+}
+```
+
+### `RouteResolveOptions`
+
+```ts
+interface RouteResolveOptions {
   params?: RouteParamsInput;
   query?: RouteQueryInit;
   hash?: string;

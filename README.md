@@ -81,8 +81,10 @@ const routes = [
     path: "users/:id",
     title: "User :id",
     component: "user-page",
+    meta: { requiresAuth: true },
     props: { pageSize: 20 },
-    guard: ({ params }) => params.id === "me" ? "/profile" : true,
+    guard: ({ leaf, params }) =>
+      leaf?.meta?.requiresAuth && params.id === "me" ? "/profile" : true,
     load: () => import("./pages/user-page.ts"),
   },
 ];
@@ -100,6 +102,8 @@ Supported fields:
   `<router-view>` for this route when it is the leaf route.
 - `component`: custom element tag name or a factory function.
 - `children`: nested route tree rendered through a named slot.
+- `meta`: route metadata for guards, events, and route context. It is not
+  assigned to the rendered DOM element.
 - `props`: extra properties assigned to the rendered element with a shallow
   `Object.assign`.
 - `guard`: async or sync route guard. Return `false` to block, or a string / URL
@@ -229,6 +233,10 @@ const attrs = router.linkAttributes(
   { name: "user-detail", params: { id: "123" } },
   { replace: true },
 );
+const match = router.resolveUrl("/users/123");
+const namedMatch = router.resolveNamed("user-detail", {
+  params: { id: "123" },
+});
 ```
 
 Named reverse routing supports literal segments, `:param`, `:param(<pattern>)`,

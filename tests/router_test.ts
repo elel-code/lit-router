@@ -784,6 +784,50 @@ Deno.test("router-view no longer injects legacy routeDetail and routeParams fiel
   });
 });
 
+Deno.test("route meta is available to guards and route detail without DOM injection", async () => {
+  await withRouters(async (createRouter) => {
+    const guardMetaValues: unknown[] = [];
+    const router = createRouter({
+      routes: [
+        { path: "", component: "test-route-page" },
+        {
+          path: "admin",
+          component: "test-route-context-prop",
+          meta: { requiresAuth: true, roles: ["admin"] },
+          guard: ({ leaf }) => {
+            guardMetaValues.push(leaf?.meta?.requiresAuth);
+            return true;
+          },
+        },
+      ],
+    });
+
+    const dom = browser();
+    const view = dom.document.createElement("router-view") as HTMLElement & {
+      router?: Router;
+      shadowRoot: ShadowRoot | null;
+      updateComplete?: Promise<unknown>;
+    };
+    view.router = router;
+    dom.document.body.append(view);
+
+    await settle(view);
+    router.push("/admin");
+    await settle(view);
+
+    const element = view.shadowRoot?.querySelector("test-route-context-prop") as
+      | (HTMLElement & { meta?: unknown })
+      | null;
+
+    assert(element);
+    assertEquals(guardMetaValues, [true]);
+    assertEquals(router.current.leaf?.meta?.requiresAuth, true);
+    assertEquals(element.meta, undefined);
+    assertEquals(router.routes[1]?.meta?.requiresAuth, true);
+    assertEquals(Object.isFrozen(router.routes[1]?.meta), true);
+  });
+});
+
 Deno.test("router builds links from named routes and route params", async () => {
   await withRouters(async (createRouter) => {
     const dom = browser();
@@ -842,6 +886,50 @@ Deno.test("router builds links from named routes and route params", async () => 
       "/app/users/456?tab=activity",
     );
     assertEquals(router.current.params.id, "456");
+  });
+});
+
+Deno.test("router resolves URLs and named routes without navigating", async () => {
+  await withRouters(async (createRouter) => {
+    const typedEvents: string[] = [];
+    const router = createRouter({
+      basePath: "/app",
+      routes: [
+        { path: "", name: "home", component: "test-route-page" },
+        { path: "users/:id", name: "user", component: "test-route-aware" },
+      ],
+    });
+
+    router.addEventListener("route-change", (event) => {
+      typedEvents.push(event.detail.localPathname);
+    });
+
+    await settle();
+
+    const resolvedUrl = router.resolveUrl("/app/users/42?tab=profile#summary");
+    assert(resolvedUrl);
+    assertEquals(resolvedUrl.localPathname, "/users/42");
+    assertEquals(resolvedUrl.params.id, "42");
+    assertEquals(resolvedUrl.query.get("tab"), "profile");
+    assertEquals(resolvedUrl.hash, "#summary");
+    assertEquals(router.current.localPathname, "/");
+
+    const resolvedNamed = router.resolveNamed("user", {
+      params: { id: "99" },
+      query: { tab: "activity" },
+    });
+    assert(resolvedNamed);
+    assertEquals(
+      resolvedNamed.url.pathname + resolvedNamed.url.search,
+      "/app/users/99?tab=activity",
+    );
+    assertEquals(resolvedNamed.params.id, "99");
+    assertEquals(router.resolveUrl("/outside"), null);
+    assertEquals(router.resolveUrl("/app/missing"), null);
+
+    router.push("/app/users/7");
+    await settle();
+    assertEquals(typedEvents.at(-1), "/users/7");
   });
 });
 

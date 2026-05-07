@@ -25,6 +25,12 @@ export interface RouteLocation {
   hash?: string;
 }
 
+export interface RouteResolveOptions {
+  params?: RouteParamsInput;
+  query?: RouteQueryInit;
+  hash?: string;
+}
+
 export interface RouterLinkOptions {
   replace?: boolean;
 }
@@ -62,6 +68,8 @@ export interface RouteLoadContext {
   signal: AbortSignal;
 }
 
+export type RouteMeta = Record<string, unknown>;
+
 export interface RouteDefinition {
   id?: string;
   name?: string;
@@ -80,12 +88,14 @@ export interface RouteDefinition {
   guard?: RouteGuard;
   beforeLeave?: RouteLeaveGuard;
   load?: (context?: RouteLoadContext) => Promise<unknown>;
+  meta?: RouteMeta;
   props?: Record<string, unknown>;
 }
 
 export type ReadonlyRouteDefinition = Readonly<
-  Omit<RouteDefinition, "children" | "props"> & {
+  Omit<RouteDefinition, "children" | "meta" | "props"> & {
     children?: readonly ReadonlyRouteDefinition[];
+    meta?: Readonly<RouteMeta>;
     props?: Readonly<Record<string, unknown>>;
   }
 >;
@@ -219,6 +229,23 @@ export interface RouteTreeChangeDetail {
   routeCount: number;
   routes: readonly ReadonlyRouteDefinition[];
 }
+
+export interface RouterEventMap {
+  "route-change": RouterChangeDetail;
+  "route-error": RouteErrorDetail;
+  "route-loading-start": RouteLoadingDetail;
+  "route-loading-end": RouteLoadingDetail;
+  "route-not-found": RouteNotFoundDetail;
+  "route-tree-change": RouteTreeChangeDetail;
+}
+
+export type RouterEvent<K extends keyof RouterEventMap = keyof RouterEventMap> =
+  CustomEvent<RouterEventMap[K]>;
+
+export type RouterEventListener<K extends keyof RouterEventMap> = (
+  this: Router,
+  event: RouterEvent<K>,
+) => void;
 
 function resolveRouteSelector(
   selector: string | RouteSelector,
@@ -729,6 +756,7 @@ function buildCompiledRoutes(
 function cloneRouteDefinition(route: RouteDefinition): RouteDefinition {
   return {
     ...route,
+    meta: route.meta ? { ...route.meta } : undefined,
     props: route.props ? { ...route.props } : undefined,
     children: route.children?.length
       ? cloneRouteDefinitions(route.children)
@@ -745,6 +773,7 @@ function freezeRouteDefinition(
 ): ReadonlyRouteDefinition {
   const snapshot: ReadonlyRouteDefinition = {
     ...route,
+    meta: route.meta ? Object.freeze({ ...route.meta }) : undefined,
     props: route.props ? Object.freeze({ ...route.props }) : undefined,
     children: route.children?.length
       ? freezeRouteDefinitions(route.children)
@@ -1064,6 +1093,56 @@ export class Router extends EventTarget {
   private lastRouteErrorDetail?: RouteErrorDetail;
   private lastRouteNotFoundDetail?: RouteNotFoundDetail;
 
+  addEventListener<K extends keyof RouterEventMap>(
+    type: K,
+    listener: RouterEventListener<K> | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener:
+      | EventListenerOrEventListenerObject
+      | RouterEventListener<keyof RouterEventMap>
+      | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    super.addEventListener(
+      type,
+      listener as EventListenerOrEventListenerObject | null,
+      options,
+    );
+  }
+
+  removeEventListener<K extends keyof RouterEventMap>(
+    type: K,
+    listener: RouterEventListener<K> | null,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener:
+      | EventListenerOrEventListenerObject
+      | RouterEventListener<keyof RouterEventMap>
+      | null,
+    options?: boolean | EventListenerOptions,
+  ): void {
+    super.removeEventListener(
+      type,
+      listener as EventListenerOrEventListenerObject | null,
+      options,
+    );
+  }
+
   private readonly onPopState = () => {
     if (this.ignoredPopStates > 0) {
       this.ignoredPopStates = Math.max(0, this.ignoredPopStates - 1);
@@ -1379,6 +1458,20 @@ export class Router extends EventTarget {
     this.navigate(url, "replace");
   }
 
+  resolveUrl(target: string | URL): RouterChangeDetail | null {
+    const url = target instanceof URL
+      ? new URL(target.href)
+      : new URL(target, browserWindow().location.href);
+    return this.resolveMatched(url);
+  }
+
+  resolveNamed(
+    name: string,
+    options: RouteResolveOptions = {},
+  ): RouterChangeDetail | null {
+    return this.resolveMatched(this.toUrl({ name, ...options }));
+  }
+
   link(location: RouteLocation): string {
     const url = this.toUrl(location);
     return `${url.pathname}${url.search}${url.hash}`;
@@ -1580,6 +1673,11 @@ export class Router extends EventTarget {
     }`;
 
     return new URL(href, browserWindow().location.origin);
+  }
+
+  private resolveMatched(url: URL): RouterChangeDetail | null {
+    const detail = this.resolve(url);
+    return detail && detail.branch.length > 0 ? detail : null;
   }
 
   private resolveNamedRouteBranch(name: string): NamedRouteBranch {

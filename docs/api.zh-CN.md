@@ -28,6 +28,7 @@ import {
   type RouteLoadContext,
   type RouteLoadingDetail,
   type RouteLocation,
+  type RouteMeta,
   type RouteNotFoundDetail,
   type RouteParamsInput,
   type RouteParamValue,
@@ -35,6 +36,10 @@ import {
   type RouteQueryValue,
   Router,
   type RouterChangeDetail,
+  type RouteResolveOptions,
+  type RouterEvent,
+  type RouterEventListener,
+  type RouterEventMap,
   type RouterLinkAttributes,
   type RouterLinkOptions,
   RouterView,
@@ -228,6 +233,26 @@ router.batchRouteUpdates(() => {
 
 参数类型与 `push()` 相同。
 
+#### `router.resolveUrl(url): RouterChangeDetail | null`
+
+在不导航的情况下解析字符串或 `URL`。当 URL 不在 `basePath`
+内，或没有命中任何路由分支时返回 `null`。
+
+```ts
+const match = router.resolveUrl("/settings/profile");
+```
+
+#### `router.resolveNamed(name, options?): RouterChangeDetail | null`
+
+先生成命名路由 URL，再在不导航的情况下解析。
+
+```ts
+const match = router.resolveNamed("message", {
+  params: { id: "42" },
+  query: { tab: "activity" },
+});
+```
+
 #### `router.link(location): string`
 
 基于命名路由生成应用内 href。
@@ -268,6 +293,31 @@ const attrs = router.linkAttributes(
 router.addEventListener("route-change", (event) => {
   console.log(event.detail.localPathname);
 });
+```
+
+`Router.addEventListener()`
+对内置路由事件名提供类型重载，已知事件可以直接获得对应的 `CustomEvent.detail`
+类型，不需要在本地手动断言。
+
+导出的辅助类型包括：
+
+```ts
+interface RouterEventMap {
+  "route-change": RouterChangeDetail;
+  "route-error": RouteErrorDetail;
+  "route-loading-start": RouteLoadingDetail;
+  "route-loading-end": RouteLoadingDetail;
+  "route-not-found": RouteNotFoundDetail;
+  "route-tree-change": RouteTreeChangeDetail;
+}
+
+type RouterEvent<K extends keyof RouterEventMap> = CustomEvent<
+  RouterEventMap[K]
+>;
+type RouterEventListener<K extends keyof RouterEventMap> = (
+  this: Router,
+  event: RouterEvent<K>,
+) => void;
 ```
 
 #### `route-change`
@@ -467,6 +517,7 @@ interface RouteDefinition {
   guard?: RouteGuard;
   beforeLeave?: RouteLeaveGuard;
   load?: (context?: RouteLoadContext) => Promise<unknown>;
+  meta?: RouteMeta;
   props?: Record<string, unknown>;
 }
 ```
@@ -485,6 +536,8 @@ interface RouteDefinition {
 - `beforeLeave`：离开当前分支该段路由时触发的守卫
 - `load`：首次进入时的异步加载器。Promise
   返回值会被忽略，只用于代码分割或副作用；会收到 `{ signal }` 以便取消
+- `meta`：供守卫、事件和路由上下文读取的路由元数据。输入时会浅克隆，只读快照中会浅冻结，不会赋值到渲染出的
+  DOM 元素上
 - `props`：通过浅层 `Object.assign` 额外赋值到组件实例上的属性
 
 匹配语义：
@@ -501,6 +554,16 @@ interface RouteDefinition {
 ```ts
 interface RouteLocation {
   name: string;
+  params?: RouteParamsInput;
+  query?: RouteQueryInit;
+  hash?: string;
+}
+```
+
+### `RouteResolveOptions`
+
+```ts
+interface RouteResolveOptions {
   params?: RouteParamsInput;
   query?: RouteQueryInit;
   hash?: string;
