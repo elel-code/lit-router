@@ -28,6 +28,7 @@
     ]
   },
   "lock": true,
+  "nodeModulesDir": "auto",
   "compilerOptions": {
     "lib": [
       "deno.ns",

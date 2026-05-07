@@ -100,14 +100,6 @@ function indexHtml(routerScript: string, componentsScript: string) {
 <head><meta charset="utf-8"><base href="/"></head>
 <body>
   <router-view></router-view>
-  <script type="importmap">
-  {
-    "imports": {
-      "lit": "https://cdn.jsdelivr.net/npm/lit@3.3.2/+esm",
-      "lit/decorators.js": "https://cdn.jsdelivr.net/npm/lit@3.3.2/+esm/decorators.js"
-    }
-  }
-  </script>
   <script type="module" src="/router.bundle.js"></script>
   <script type="module">
     ${componentsScript}
