@@ -3,12 +3,12 @@
  *
  * Requires Chromium. Puppeteer downloads it automatically on first run.
  *
- * Build first:  deno run -A scripts/build-e2e.ts
- * Then run:     deno test -A tests/e2e/e2e_test.ts
+ * Provide dist-e2e/router.bundle.js, then run:
+ * deno test -A tests/e2e/e2e_test.ts
  */
 
 import { assertEquals } from "@std/assert";
-import puppeteer from "puppeteer";
+import puppeteer, { type Page } from "puppeteer";
 
 // ---------- server ----------
 
@@ -59,31 +59,70 @@ async function prepareBrowser(port: number) {
   });
   const page = await browser.newPage();
   await page.goto(`http://localhost:${port}/`, { waitUntil: "networkidle0" });
+  await waitForRouterReady(page);
   return { browser, page };
 }
 
-async function nav(
-  page: Awaited<ReturnType<typeof prepareBrowser>>["page"],
+async function waitForRouterReady(page: Page) {
+  await page.waitForFunction(() => {
+    const view = document.querySelector("router-view") as
+      | (HTMLElement & { router?: unknown })
+      | null;
+    return Boolean(customElements.get("router-view") && view?.router);
+  }, { timeout: 5_000 });
+}
+
+async function waitForPath(
+  page: Page,
   path: string,
 ) {
+  await page.waitForFunction(
+    (p: string) => globalThis.location.pathname === p,
+    { timeout: 5_000 },
+    path,
+  );
+}
+
+async function waitForText(
+  page: Page,
+  sel: string,
+  expected: string,
+) {
+  await page.waitForFunction(
+    (s: string, value: string) =>
+      document.querySelector(s)?.textContent === value,
+    { timeout: 5_000 },
+    sel,
+    expected,
+  );
+}
+
+async function nav(
+  page: Page,
+  path: string,
+) {
+  await waitForRouterReady(page);
   await page.evaluate((p: string) => {
     (document.querySelector("router-view") as { push?: (p: string) => void })
       ?.push?.(p);
   }, path);
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  await waitForPath(page, path);
 }
 
-async function back(page: Awaited<ReturnType<typeof prepareBrowser>>["page"]) {
+async function back(
+  page: Page,
+  expectedPath: string,
+) {
   await page.evaluate(() => globalThis.history.back());
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  await waitForPath(page, expectedPath);
 }
 
-function pathname(page: Awaited<ReturnType<typeof prepareBrowser>>["page"]) {
+function pathname(page: Page) {
   return page.evaluate(() => globalThis.location.pathname);
 }
 
 function text(
-  page: Awaited<ReturnType<typeof prepareBrowser>>["page"],
+  page: Page,
   sel: string,
 ) {
   return page.evaluate(
@@ -164,11 +203,13 @@ Deno.test({
       const { browser, page } = await prepareBrowser(server.port);
 
       // initial page
+      await waitForText(page, "x-home", "Home");
       assertEquals(await pathname(page), "/");
       assertEquals(await text(page, "x-home"), "Home");
 
       // push
       await nav(page, "/products/42");
+      await waitForText(page, "x-product", "Product");
       assertEquals(await pathname(page), "/products/42");
       assertEquals(await text(page, "x-product"), "Product");
       assertEquals(await page.evaluate(() => document.title), "Product 42");
@@ -239,10 +280,10 @@ Deno.test({
       await nav(page, "/contact");
       assertEquals(await pathname(page), "/contact");
 
-      await back(page);
+      await back(page, "/about");
       assertEquals(await pathname(page), "/about");
 
-      await back(page);
+      await back(page, "/");
       assertEquals(await pathname(page), "/");
 
       await browser.close();
@@ -309,6 +350,14 @@ Deno.test({
       const { browser, page } = await prepareBrowser(server.port);
 
       await nav(page, "/settings/profile");
+      await page.waitForFunction(() => {
+        const layout = document.querySelector("x-layout");
+        if (!layout?.shadowRoot) return false;
+        const slot = layout.shadowRoot.querySelector(
+          'slot[name="sidebar"]',
+        ) as HTMLSlotElement | null;
+        return slot?.assignedElements()?.[0]?.textContent === "SidebarContent";
+      }, { timeout: 5_000 });
       const sidebarText = await page.evaluate(() => {
         const layout = document.querySelector("x-layout");
         if (!layout?.shadowRoot) return "no-shadow";
@@ -363,6 +412,13 @@ Deno.test({
       const { browser, page } = await prepareBrowser(server.port);
 
       await nav(page, "/missing-page");
+      await page.waitForFunction(() => {
+        const view = document.querySelector("router-view");
+        return Boolean(
+          view?.shadowRoot?.querySelector('[data-fallback="404"]')
+            ?.textContent?.includes("404"),
+        );
+      }, { timeout: 5_000 });
       const fallbackText = await page.evaluate(() => {
         const view = document.querySelector("router-view");
         return view?.shadowRoot?.querySelector('[data-fallback="404"]')

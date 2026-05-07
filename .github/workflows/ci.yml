@@ -42,13 +42,15 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Install JSR npm package
+      - name: Install E2E npm packages
         run: |
           npm config set @jsr:registry https://npm.jsr.io
-          npm install --no-save --no-package-lock @jsr/elelcode__lit-router
+          npm install --no-save --no-package-lock @jsr/elelcode__lit-router esbuild@0.25.8
 
       - name: Build E2E bundle
-        run: E2E_ROUTER_ENTRY=@jsr/elelcode__lit-router deno run -A scripts/build-e2e.ts
+        run: |
+          mkdir -p dist-e2e
+          ./node_modules/.bin/esbuild @jsr/elelcode__lit-router --bundle --format=esm --platform=browser --target=es2022 --outfile=dist-e2e/router.bundle.js
 
       - name: Install Chromium
         run: sudo apt-get update -qq && sudo apt-get install -y -qq chromium-browser
