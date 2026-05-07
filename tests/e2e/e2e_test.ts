@@ -62,7 +62,10 @@ async function prepareBrowser(port: number) {
   return { browser, page };
 }
 
-async function nav(page: Awaited<ReturnType<typeof prepareBrowser>>["page"], path: string) {
+async function nav(
+  page: Awaited<ReturnType<typeof prepareBrowser>>["page"],
+  path: string,
+) {
   await page.evaluate((p: string) => {
     (document.querySelector("router-view") as { push?: (p: string) => void })
       ?.push?.(p);
@@ -75,12 +78,20 @@ async function back(page: Awaited<ReturnType<typeof prepareBrowser>>["page"]) {
   await new Promise((resolve) => setTimeout(resolve, 150));
 }
 
-async function pathname(page: Awaited<ReturnType<typeof prepareBrowser>>["page"]) {
+async function pathname(
+  page: Awaited<ReturnType<typeof prepareBrowser>>["page"],
+) {
   return page.evaluate(() => window.location.pathname);
 }
 
-async function text(page: Awaited<ReturnType<typeof prepareBrowser>>["page"], sel: string) {
-  return page.evaluate((s: string) => document.querySelector(s)?.textContent ?? "", sel);
+async function text(
+  page: Awaited<ReturnType<typeof prepareBrowser>>["page"],
+  sel: string,
+) {
+  return page.evaluate(
+    (s: string) => document.querySelector(s)?.textContent ?? "",
+    sel,
+  );
 }
 
 // ---------- pages ----------
@@ -94,17 +105,17 @@ function indexHtml(routerScript: string, componentsScript: string) {
   <script type="importmap">
   {
     "imports": {
-      "lit": "https://esm.sh/lit@3.2.1",
-      "lit/decorators.js": "https://esm.sh/lit@3.2.1/decorators.js"
+      "lit": "https://esm.sh/lit@3.3.2",
+      "lit/decorators.js": "https://esm.sh/lit@3.3.2/decorators.js"
     }
   }
   </script>
   <script type="module" src="/router.bundle.js"></script>
   <script type="module">
-    ${routerScript}
+    ${componentsScript}
   </script>
   <script type="module">
-    ${componentsScript}
+    ${routerScript}
   </script>
 </body>
 </html>`;
@@ -117,10 +128,15 @@ Deno.test({
   async fn() {
     const tmp = await Deno.makeTempDir();
     try {
-      await Deno.copyFile("dist-e2e/router.bundle.js", `${tmp}/router.bundle.js`);
+      await Deno.copyFile(
+        "dist-e2e/router.bundle.js",
+        `${tmp}/router.bundle.js`,
+      );
 
-      await Deno.writeTextFile(`${tmp}/index.html`, indexHtml(
-        `
+      await Deno.writeTextFile(
+        `${tmp}/index.html`,
+        indexHtml(
+          `
         import { Router } from "/router.bundle.js";
 
         customElements.whenDefined("router-view").then(() => {
@@ -140,7 +156,7 @@ Deno.test({
           document.querySelector("router-view").router = router;
         });
       `,
-        `
+          `
         customElements.define("x-home", class extends HTMLElement {
           connectedCallback() { this.textContent = "Home"; }
         });
@@ -150,7 +166,9 @@ Deno.test({
         customElements.define("x-product", class extends HTMLElement {
           connectedCallback() { this.textContent = "Product"; }
         });
-      `));
+      `,
+        ),
+      );
 
       const server = await startServer(tmp);
       const { browser, page } = await prepareBrowser(server.port);
@@ -167,7 +185,9 @@ Deno.test({
 
       // view transition name
       const vtn = await page.evaluate(() => {
-        const view = document.querySelector("router-view") as HTMLElement & { dataset: DOMStringMap };
+        const view = document.querySelector("router-view") as HTMLElement & {
+          dataset: DOMStringMap;
+        };
         return view?.dataset.viewTransitionName ?? "";
       });
       assertEquals(vtn, "product-stage");
@@ -187,10 +207,15 @@ Deno.test({
   async fn() {
     const tmp = await Deno.makeTempDir();
     try {
-      await Deno.copyFile("dist-e2e/router.bundle.js", `${tmp}/router.bundle.js`);
+      await Deno.copyFile(
+        "dist-e2e/router.bundle.js",
+        `${tmp}/router.bundle.js`,
+      );
 
-      await Deno.writeTextFile(`${tmp}/index.html`, indexHtml(
-        `
+      await Deno.writeTextFile(
+        `${tmp}/index.html`,
+        indexHtml(
+          `
         import { Router } from "/router.bundle.js";
         customElements.whenDefined("router-view").then(() => {
           const router = new Router({
@@ -203,7 +228,7 @@ Deno.test({
           document.querySelector("router-view").router = router;
         });
       `,
-        `
+          `
         customElements.define("x-home", class extends HTMLElement {
           connectedCallback() { this.textContent = "Home"; }
         });
@@ -213,7 +238,9 @@ Deno.test({
         customElements.define("x-contact", class extends HTMLElement {
           connectedCallback() { this.textContent = "Contact"; }
         });
-      `));
+      `,
+        ),
+      );
 
       const server = await startServer(tmp);
       const { browser, page } = await prepareBrowser(server.port);
@@ -243,10 +270,15 @@ Deno.test({
   async fn() {
     const tmp = await Deno.makeTempDir();
     try {
-      await Deno.copyFile("dist-e2e/router.bundle.js", `${tmp}/router.bundle.js`);
+      await Deno.copyFile(
+        "dist-e2e/router.bundle.js",
+        `${tmp}/router.bundle.js`,
+      );
 
-      await Deno.writeTextFile(`${tmp}/index.html`, indexHtml(
-        `
+      await Deno.writeTextFile(
+        `${tmp}/index.html`,
+        indexHtml(
+          `
         import { Router } from "/router.bundle.js";
 
         customElements.define("x-layout", class extends HTMLElement {
@@ -279,7 +311,9 @@ Deno.test({
           document.querySelector("router-view").router = router;
         });
       `,
-        ``));
+          ``,
+        ),
+      );
 
       const server = await startServer(tmp);
       const { browser, page } = await prepareBrowser(server.port);
@@ -288,7 +322,9 @@ Deno.test({
       const sidebarText = await page.evaluate(() => {
         const layout = document.querySelector("x-layout");
         if (!layout?.shadowRoot) return "no-shadow";
-        const slot = layout.shadowRoot.querySelector('slot[name="sidebar"]') as HTMLSlotElement;
+        const slot = layout.shadowRoot.querySelector(
+          'slot[name="sidebar"]',
+        ) as HTMLSlotElement;
         return slot?.assignedElements()?.[0]?.textContent ?? "no-assigned";
       });
       assertEquals(sidebarText, "SidebarContent");
@@ -308,10 +344,15 @@ Deno.test({
   async fn() {
     const tmp = await Deno.makeTempDir();
     try {
-      await Deno.copyFile("dist-e2e/router.bundle.js", `${tmp}/router.bundle.js`);
+      await Deno.copyFile(
+        "dist-e2e/router.bundle.js",
+        `${tmp}/router.bundle.js`,
+      );
 
-      await Deno.writeTextFile(`${tmp}/index.html`, indexHtml(
-        `
+      await Deno.writeTextFile(
+        `${tmp}/index.html`,
+        indexHtml(
+          `
         import { Router } from "/router.bundle.js";
         customElements.whenDefined("router-view").then(() => {
           const router = new Router({
@@ -320,11 +361,13 @@ Deno.test({
           document.querySelector("router-view").router = router;
         });
       `,
-        `
+          `
         customElements.define("x-home", class extends HTMLElement {
           connectedCallback() { this.textContent = "Home"; }
         });
-      `));
+      `,
+        ),
+      );
 
       const server = await startServer(tmp);
       const { browser, page } = await prepareBrowser(server.port);
@@ -332,7 +375,8 @@ Deno.test({
       await nav(page, "/missing-page");
       const fallbackText = await page.evaluate(() => {
         const view = document.querySelector("router-view");
-        return view?.shadowRoot?.querySelector('[data-fallback="404"]')?.textContent ?? "";
+        return view?.shadowRoot?.querySelector('[data-fallback="404"]')
+          ?.textContent ?? "";
       });
       assertEquals(fallbackText.includes("404"), true);
 

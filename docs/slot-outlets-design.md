@@ -1,7 +1,9 @@
 # 并行命名 Outlet — Slot 方案设计
 
-版本：v4 状态：已完整落地，多 slot 匹配、渲染、守卫、懒加载、焦点策略均已实现并通过测试
-章节：设计概览 | RouterChangeDetail | 匹配算法 | RouterView | 守卫/懒加载 | 边界处理 | 性能优化 | 实施清单 | 落地数据流
+版本：v4 状态：已完整落地，多 slot
+匹配、渲染、守卫、懒加载、焦点策略均已实现并通过测试 章节：设计概览 |
+RouterChangeDetail | 匹配算法 | RouterView | 守卫/懒加载 | 边界处理 | 性能优化 |
+实施清单 | 落地数据流
 
 ## 1. 概览
 
@@ -339,8 +341,9 @@ transition name。当前实现取 `detail.leaf?.viewTransitionName`（主链叶�
 
 `matchSlotRoutes` 内部使用 `matchCache: Map<string, PatternMatch[]>` 以
 `normalizedPath` 为 key 缓存 `execPatternMatches` 结果。两个 slot 的路由如果
-path 相同（如 `{ path: "profile" }` 和 `{ path: "profile", slot: "sidebar" }`），
-第二次遍历直接从缓存读取，避免重复 `URLPattern.exec()`。
+path 相同（如 `{ path: "profile" }` 和
+`{ path: "profile", slot: "sidebar" }`）， 第二次遍历直接从缓存读取，避免重复
+`URLPattern.exec()`。
 
 ### 7.2 RouterView 可延迟挂载未激活的 slot
 
@@ -547,14 +550,16 @@ RouterView host。
 所有 6 步已按计划落地，实际演变路径与建议高度一致：
 
 1. 类型层：`RouteDefinition.slot?: string` + `ReadonlyRouteDefinition` 自然传递
-2. 匹配层：`matchSlotRoutes` 替换 `matchRoutes`，含 `matchCache` + `candidatePrefixes`
+2. 匹配层：`matchSlotRoutes` 替换 `matchRoutes`，含 `matchCache` +
+   `candidatePrefixes`
 3. 渲染层：`renderedBranches: Map<string, HTMLElement[]>` 分桶
 4. 匹配层多 slot：主 slot 判定可达性、侧 slot 独立匹配、同路径不同 slot
-5. 守卫/懒加载：`collectLeavingRoutes` + `collectMatchedRoutes` + `detailBranches`
+5. 守卫/懒加载：`collectLeavingRoutes` + `collectMatchedRoutes` +
+   `detailBranches`
 6. 焦点、slot warning、loading 事件、`toJSON` 序列化
 
-总计 ~15 个函数/字段新增或重构，跨 router-core.ts 和 router-view.ts，
-70 条测试全部通过（含 8 条多 slot 专项测试）。
+总计 ~15 个函数/字段新增或重构，跨 router-core.ts 和 router-view.ts， 70
+条测试全部通过（含 8 条多 slot 专项测试）。
 
 ### 9.11 暂不建议做的优化
 
