@@ -7,7 +7,8 @@
     "npm:esbuild@0.25.8": "0.25.8",
     "npm:happy-dom@^20.9.0": "20.9.0",
     "npm:lit@^3.3.2": "3.3.2",
-    "npm:puppeteer@24.14.0": "24.14.0"
+    "npm:puppeteer@24.14.0": "24.14.0",
+    "npm:puppeteer@^24.14.0": "24.14.0"
   },
   "jsr": {
     "@std/assert@1.0.19": {
@@ -800,7 +801,8 @@
     "dependencies": [
       "jsr:@std/assert@^1.0.15",
       "npm:happy-dom@^20.9.0",
-      "npm:lit@^3.3.2"
+      "npm:lit@^3.3.2",
+      "npm:puppeteer@^24.14.0"
     ]
   }
 }

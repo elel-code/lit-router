@@ -8,11 +8,11 @@
  */
 
 import { assertEquals } from "@std/assert";
-import puppeteer from "npm:puppeteer@24.14.0";
+import puppeteer from "puppeteer";
 
 // ---------- server ----------
 
-async function startServer(root: string) {
+function startServer(root: string) {
   const controller = new AbortController();
   const server = Deno.serve(
     { port: 0, signal: controller.signal },
@@ -74,17 +74,15 @@ async function nav(
 }
 
 async function back(page: Awaited<ReturnType<typeof prepareBrowser>>["page"]) {
-  await page.evaluate(() => window.history.back());
+  await page.evaluate(() => globalThis.history.back());
   await new Promise((resolve) => setTimeout(resolve, 150));
 }
 
-async function pathname(
-  page: Awaited<ReturnType<typeof prepareBrowser>>["page"],
-) {
-  return page.evaluate(() => window.location.pathname);
+function pathname(page: Awaited<ReturnType<typeof prepareBrowser>>["page"]) {
+  return page.evaluate(() => globalThis.location.pathname);
 }
 
-async function text(
+function text(
   page: Awaited<ReturnType<typeof prepareBrowser>>["page"],
   sel: string,
 ) {
@@ -105,8 +103,8 @@ function indexHtml(routerScript: string, componentsScript: string) {
   <script type="importmap">
   {
     "imports": {
-      "lit": "https://esm.sh/lit@3.3.2",
-      "lit/decorators.js": "https://esm.sh/lit@3.3.2/decorators.js"
+      "lit": "https://cdn.jsdelivr.net/npm/lit@3.3.2/+esm",
+      "lit/decorators.js": "https://cdn.jsdelivr.net/npm/lit@3.3.2/+esm/decorators.js"
     }
   }
   </script>
