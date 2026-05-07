@@ -818,6 +818,16 @@ Deno.test("router builds links from named routes and route params", async () => 
       }),
       "/app/users/123?tab=profile&filter=new&filter=open#summary",
     );
+    assertEquals(
+      router.linkAttributes({
+        name: "user-detail",
+        params: { id: 123 },
+      }, { replace: true }),
+      {
+        href: "/app/users/123",
+        "data-router-replace": "",
+      },
+    );
 
     router.push({
       name: "user-detail",

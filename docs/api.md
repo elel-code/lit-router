@@ -34,6 +34,8 @@ import {
   type RouteQueryValue,
   Router,
   type RouterChangeDetail,
+  type RouterLinkAttributes,
+  type RouterLinkOptions,
   RouterView,
   type RouteSelector,
   type RouteTreeChangeDetail,
@@ -244,6 +246,19 @@ Notes:
 - Supports literal segments, `:param`, `:param(<pattern>)`, `*`, and optional
   `?` tokens such as `:lang?/docs`.
 - Rejects `+` and `*` parameter modifiers during reverse routing.
+
+#### `router.linkAttributes(location, options?): RouterLinkAttributes`
+
+Builds attributes for a named-route anchor. Use this when JavaScript creates
+links that need replace semantics.
+
+```ts
+const attrs = router.linkAttributes(
+  { name: "message", params: { id: "42" } },
+  { replace: true },
+);
+// { href: "/messages/42", "data-router-replace": "" }
+```
 
 ### Events
 
@@ -469,7 +484,8 @@ Field notes:
 - `beforeLeave`: leave guard for this route when its branch segment unloads
 - `load`: first-entry async loader. Its resolved value is ignored; use it for
   code splitting or side effects only. Receives `{ signal }` for cancellation.
-- `props`: extra properties assigned onto the rendered element
+- `props`: extra properties assigned onto the rendered element with a shallow
+  `Object.assign`
 
 Matching semantics:
 
@@ -488,6 +504,19 @@ interface RouteLocation {
   params?: RouteParamsInput;
   query?: RouteQueryInit;
   hash?: string;
+}
+```
+
+### `RouterLinkOptions` / `RouterLinkAttributes`
+
+```ts
+interface RouterLinkOptions {
+  replace?: boolean;
+}
+
+interface RouterLinkAttributes {
+  href: string;
+  "data-router-replace"?: "";
 }
 ```
 

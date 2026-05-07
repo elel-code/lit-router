@@ -19,6 +19,8 @@ export {
   type RouteQueryValue,
   Router,
   type RouterChangeDetail,
+  type RouterLinkAttributes,
+  type RouterLinkOptions,
   type RouteSelector,
   type RouteTreeChangeDetail,
 } from "./router-core.ts";

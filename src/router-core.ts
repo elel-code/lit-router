@@ -24,6 +24,16 @@ export interface RouteLocation {
   query?: RouteQueryInit;
   hash?: string;
 }
+
+export interface RouterLinkOptions {
+  replace?: boolean;
+}
+
+export interface RouterLinkAttributes {
+  href: string;
+  "data-router-replace"?: "";
+}
+
 type GuardRedirect =
   | string
   | URL
@@ -232,6 +242,7 @@ const HISTORY_ENTRY_KEY = "__litRouterEntryKey";
 const EXACT_PATH_END_SPECIFICITY = 3;
 const MAX_HISTORY_ENTRY_ORDERS = 256;
 const HISTORY_ENTRY_ORDER_PRUNE_TO = 128;
+const MAX_IGNORED_POP_STATES = 8;
 
 function normalizePathname(pathname: string): string {
   if (!pathname || pathname === ROOT_PATH) {
@@ -1017,7 +1028,7 @@ export class Router extends EventTarget {
 
   private readonly onPopState = () => {
     if (this.ignoredPopStates > 0) {
-      this.ignoredPopStates -= 1;
+      this.ignoredPopStates = Math.max(0, this.ignoredPopStates - 1);
       return;
     }
 
@@ -1333,6 +1344,14 @@ export class Router extends EventTarget {
   link(location: RouteLocation): string {
     const url = this.toUrl(location);
     return `${url.pathname}${url.search}${url.hash}`;
+  }
+
+  linkAttributes(
+    location: RouteLocation,
+    options: RouterLinkOptions = {},
+  ): RouterLinkAttributes {
+    const href = this.link(location);
+    return options.replace ? { href, "data-router-replace": "" } : { href };
   }
 
   get lastError(): RouteErrorDetail | undefined {
@@ -2107,6 +2126,13 @@ export class Router extends EventTarget {
     return navigationId !== this.navigationId;
   }
 
+  private ignoreNextPopState(): void {
+    this.ignoredPopStates = Math.min(
+      MAX_IGNORED_POP_STATES,
+      this.ignoredPopStates + 1,
+    );
+  }
+
   private restoreCancelledNavigation(
     attemptedUrl: URL,
     attemptedHistoryKey: string | undefined,
@@ -2130,8 +2156,16 @@ export class Router extends EventTarget {
       attemptedOrder !== undefined &&
       currentOrder !== attemptedOrder
     ) {
-      this.ignoredPopStates += 1;
+      if (this.restoreCancelledNavigationWithNavigationApi()) {
+        return;
+      }
+
+      this.ignoreNextPopState();
       browserWindow().history.go(currentOrder - attemptedOrder);
+      return;
+    }
+
+    if (this.restoreCancelledNavigationWithNavigationApi()) {
       return;
     }
 
@@ -2143,6 +2177,21 @@ export class Router extends EventTarget {
       "",
       `${this.current.url.pathname}${this.current.url.search}${this.current.url.hash}`,
     );
+  }
+
+  private restoreCancelledNavigationWithNavigationApi(): boolean {
+    if (!this.navigationApi) {
+      return false;
+    }
+
+    const href =
+      `${this.current.url.pathname}${this.current.url.search}${this.current.url.hash}`;
+    try {
+      this.navigationApi.navigate(href, { history: "replace" });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private dispatchRouteLoading(

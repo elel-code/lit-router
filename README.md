@@ -100,7 +100,8 @@ Supported fields:
   `<router-view>` for this route when it is the leaf route.
 - `component`: custom element tag name or a factory function.
 - `children`: nested route tree rendered through a named slot.
-- `props`: extra properties assigned to the rendered element.
+- `props`: extra properties assigned to the rendered element with a shallow
+  `Object.assign`.
 - `guard`: async or sync route guard. Return `false` to block, or a string / URL
   / redirect object to redirect.
 - `beforeLeave`: async or sync leave guard for the branch being unloaded. Return
@@ -224,6 +225,10 @@ const href = router.link({
   params: { id: "123" },
   query: { tab: "activity" },
 });
+const attrs = router.linkAttributes(
+  { name: "user-detail", params: { id: "123" } },
+  { replace: true },
+);
 ```
 
 Named reverse routing supports literal segments, `:param`, `:param(<pattern>)`,
@@ -236,6 +241,8 @@ Anchor navigation:
 - Same-origin links outside `basePath` fall back to the browser.
 - Both HTML and SVG `<a>` elements are supported.
 - Add `data-router-replace` to an anchor to use replace-style navigation.
+- Use `router.linkAttributes(location, { replace: true })` when creating
+  replace-style links from JavaScript.
 
 Leave guards run only for the suffix being unloaded. Shared parent routes are
 not re-checked when sibling child routes switch.

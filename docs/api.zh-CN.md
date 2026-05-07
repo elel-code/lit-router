@@ -34,6 +34,8 @@ import {
   type RouteQueryValue,
   Router,
   type RouterChangeDetail,
+  type RouterLinkAttributes,
+  type RouterLinkOptions,
   RouterView,
   type RouteSelector,
   type RouteTreeChangeDetail,
@@ -240,6 +242,18 @@ const href = router.link({
 - 支持字面量片段、`:param`、`:param(<pattern>)`、`*`，以及 `:lang?/docs`
   这类可选 `?` 片段
 - 路径里如果出现 `+` 或 `*` 参数修饰符，反向生成时会直接抛错
+
+#### `router.linkAttributes(location, options?): RouterLinkAttributes`
+
+基于命名路由生成 `<a>` 属性。通过 JavaScript 创建需要 replace 语义的链接时使用。
+
+```ts
+const attrs = router.linkAttributes(
+  { name: "message", params: { id: "42" } },
+  { replace: true },
+);
+// { href: "/messages/42", "data-router-replace": "" }
+```
 
 ### 事件
 
@@ -463,7 +477,7 @@ interface RouteDefinition {
 - `beforeLeave`：离开当前分支该段路由时触发的守卫
 - `load`：首次进入时的异步加载器。Promise
   返回值会被忽略，只用于代码分割或副作用；会收到 `{ signal }` 以便取消
-- `props`：额外赋值到组件实例上的属性
+- `props`：通过浅层 `Object.assign` 额外赋值到组件实例上的属性
 
 匹配语义：
 
@@ -482,6 +496,19 @@ interface RouteLocation {
   params?: RouteParamsInput;
   query?: RouteQueryInit;
   hash?: string;
+}
+```
+
+### `RouterLinkOptions` / `RouterLinkAttributes`
+
+```ts
+interface RouterLinkOptions {
+  replace?: boolean;
+}
+
+interface RouterLinkAttributes {
+  href: string;
+  "data-router-replace"?: "";
 }
 ```
 
