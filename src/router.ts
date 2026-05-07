@@ -1,5 +1,6 @@
 export {
   type NavigationDirection,
+  type ReadonlyRouteDefinition,
   type RouteComponentFactory,
   type RouteContext,
   type RouteContextReceiver,

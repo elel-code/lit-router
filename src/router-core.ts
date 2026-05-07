@@ -83,6 +83,13 @@ export interface RouteDefinition {
   props?: Record<string, unknown>;
 }
 
+export type ReadonlyRouteDefinition = Readonly<
+  Omit<RouteDefinition, "children" | "props"> & {
+    children?: readonly ReadonlyRouteDefinition[];
+    props?: Readonly<Record<string, unknown>>;
+  }
+>;
+
 interface NavigationApiLike extends EventTarget {
   navigate: (url: string, options?: { history?: HistoryMode }) => unknown;
   currentEntry?: {
@@ -210,7 +217,7 @@ export interface RouteSelector {
 export interface RouteTreeChangeDetail {
   reason: "replace" | "insert" | "remove" | "batch";
   routeCount: number;
-  routes: RouteDefinition[];
+  routes: readonly ReadonlyRouteDefinition[];
 }
 
 function resolveRouteSelector(
@@ -733,6 +740,25 @@ function cloneRouteDefinitions(routes: RouteDefinition[]): RouteDefinition[] {
   return routes.map((route) => cloneRouteDefinition(route));
 }
 
+function freezeRouteDefinition(
+  route: RouteDefinition,
+): ReadonlyRouteDefinition {
+  const snapshot: ReadonlyRouteDefinition = {
+    ...route,
+    props: route.props ? Object.freeze({ ...route.props }) : undefined,
+    children: route.children?.length
+      ? freezeRouteDefinitions(route.children)
+      : undefined,
+  };
+  return Object.freeze(snapshot);
+}
+
+function freezeRouteDefinitions(
+  routes: RouteDefinition[],
+): readonly ReadonlyRouteDefinition[] {
+  return Object.freeze(routes.map((route) => freezeRouteDefinition(route)));
+}
+
 function countRouteDefinitions(routes: RouteDefinition[]): number {
   return routes.reduce(
     (count, route) => count + 1 + countRouteDefinitions(route.children ?? []),
@@ -1020,6 +1046,9 @@ export class Router extends EventTarget {
   private compiledRoutes: CompiledRouteDefinition[] = [];
   private routeIds = new Map<string, NamedRouteBranch>();
   private namedRoutes = new Map<string, NamedRouteBranch>();
+  private readonlyRoutes: readonly ReadonlyRouteDefinition[] = Object.freeze(
+    [],
+  );
   private routeCount = 0;
   private readonly historyEntryOrders = new Map<string, number>();
   private nextHistoryEntryOrder = 0;
@@ -1140,8 +1169,8 @@ export class Router extends EventTarget {
     }
   }
 
-  get routes(): RouteDefinition[] {
-    return this.cloneRoutes();
+  get routes(): readonly ReadonlyRouteDefinition[] {
+    return this.readonlyRoutes;
   }
 
   set routes(routes: RouteDefinition[]) {
@@ -1642,6 +1671,7 @@ export class Router extends EventTarget {
     );
     this.routeIds = buildRouteIdIndex(this.routeTree);
     this.namedRoutes = buildNamedRouteIndex(this.routeTree);
+    this.readonlyRoutes = freezeRouteDefinitions(this.routeTree);
     this.routeCount = countRouteDefinitions(this.routeTree);
   }
 
@@ -1663,18 +1693,11 @@ export class Router extends EventTarget {
   private dispatchRouteTreeChange(
     reason: RouteTreeChangeDetail["reason"],
   ): void {
-    let routesSnapshot: RouteDefinition[] | undefined;
-    const detail = {
+    const detail: RouteTreeChangeDetail = {
       reason,
       routeCount: this.routeCount,
-    } as RouteTreeChangeDetail;
-    Object.defineProperty(detail, "routes", {
-      enumerable: true,
-      get: () => {
-        routesSnapshot ??= this.cloneRoutes();
-        return routesSnapshot;
-      },
-    });
+      routes: this.readonlyRoutes,
+    };
 
     this.dispatchEvent(
       new CustomEvent<RouteTreeChangeDetail>("route-tree-change", {

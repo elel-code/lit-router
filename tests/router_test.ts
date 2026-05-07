@@ -3,6 +3,7 @@ import { ScrollManager } from "../src/scroll-manager.ts";
 import { ensureDom, resetDom, settle, teardownDom } from "./test_setup.ts";
 type Router = import("../src/router-core.ts").Router;
 type RouteContext = import("../src/router-core.ts").RouteContext;
+type RouteDefinition = import("../src/router-core.ts").RouteDefinition;
 type RouteErrorDetail = import("../src/router-core.ts").RouteErrorDetail;
 type RouteLoadingDetail = import("../src/router-core.ts").RouteLoadingDetail;
 type RouteNotFoundDetail = import("../src/router-core.ts").RouteNotFoundDetail;
@@ -1033,15 +1034,23 @@ Deno.test("unrelated route insertion emits route-tree-change without route-chang
     await settle();
 
     assertEquals(routeChanges.length, 1);
-    assertEquals(routeChanges[0]?.reason, "insert");
-    assertEquals(routeChanges[0]?.routeCount, 2);
-    assertEquals(routeChanges[0]?.routes.length, 2);
-    assertEquals(routeChanges[0]?.routes, routeChanges[0]?.routes);
-    routeChanges[0]?.routes.push({
-      path: "mutated-event-snapshot",
-      name: "mutated-event-snapshot",
-      component: "test-route-alt",
-    });
+    const detail = routeChanges[0];
+    assert(detail);
+    assertEquals(detail.reason, "insert");
+    assertEquals(detail.routeCount, 2);
+    assertEquals(detail.routes.length, 2);
+    assertEquals(Object.isFrozen(detail.routes), true);
+    let mutationThrown: unknown;
+    try {
+      (detail.routes as RouteDefinition[]).push({
+        path: "mutated-event-snapshot",
+        name: "mutated-event-snapshot",
+        component: "test-route-alt",
+      });
+    } catch (error) {
+      mutationThrown = error;
+    }
+    assert(mutationThrown instanceof TypeError);
     assertEquals(router.routes.length, 2);
     assertEquals(navigationChanges, 0);
     assertEquals(router.current.localPathname, "/");
@@ -1301,7 +1310,7 @@ Deno.test("router rejects async batchRouteUpdates callbacks", async () => {
   });
 });
 
-Deno.test("router routes getter returns a snapshot and setter applies a replacement", async () => {
+Deno.test("router routes getter returns a frozen snapshot and setter applies a replacement", async () => {
   await withRouters(async (createRouter) => {
     const router = createRouter({
       routes: [
@@ -1312,11 +1321,18 @@ Deno.test("router routes getter returns a snapshot and setter applies a replacem
     await settle();
 
     const snapshot = router.routes;
-    snapshot.push({
-      path: "ignored",
-      name: "ignored",
-      component: "test-route-alt",
-    });
+    assertEquals(Object.isFrozen(snapshot), true);
+    let mutationThrown: unknown;
+    try {
+      (snapshot as RouteDefinition[]).push({
+        path: "ignored",
+        name: "ignored",
+        component: "test-route-alt",
+      });
+    } catch (error) {
+      mutationThrown = error;
+    }
+    assert(mutationThrown instanceof TypeError);
 
     let thrown: unknown;
     try {
@@ -1333,7 +1349,7 @@ Deno.test("router routes getter returns a snapshot and setter applies a replacem
     assertEquals(router.cloneRoutes().length, 1);
 
     router.routes = [
-      ...router.routes,
+      ...router.cloneRoutes(),
       { path: "applied", name: "applied", component: "test-route-alt" },
     ];
     await settle();

@@ -15,6 +15,7 @@ import "@elelcode/lit-router";
 import {
   DEFAULT_CHILD_SLOT,
   type NavigationDirection,
+  type ReadonlyRouteDefinition,
   type RouteComponentFactory,
   type RouteContext,
   type RouteContextReceiver,
@@ -77,16 +78,15 @@ const router = new Router({
 
 最近一次已提交的路由状态。应把它当作只读状态使用。
 
-#### `router.routes: RouteDefinition[]`
+#### `router.routes: readonly ReadonlyRouteDefinition[]`
 
-获取当前路由树的克隆副本。
+获取当前冻结的只读路由树快照。
 
 直接赋值 `router.routes = [...]` 会整体替换路由树，并触发一次重新匹配。
 
 #### `router.cloneRoutes(): RouteDefinition[]`
 
-返回当前路由树的克隆快照。它与 getter
-语义相同，但能让调用点更明确地表达这里会分配快照。
+返回当前路由树的可变克隆快照。
 
 #### `router.basePath: string`
 
@@ -289,8 +289,8 @@ router.addEventListener("route-change", (event) => {
 - `"remove"`
 - `"batch"`
 
-`routeCount` 表示路由定义总数。`routes`
-是克隆快照，并且只有在读取该属性时才会创建。
+`routeCount` 表示路由定义总数。`routes` 与 `router.routes`
+暴露的是同一个冻结只读快照。
 
 #### `route-loading-start`
 
@@ -702,7 +702,7 @@ interface RouteNotFoundDetail {
 interface RouteTreeChangeDetail {
   reason: "replace" | "insert" | "remove" | "batch";
   routeCount: number;
-  routes: RouteDefinition[];
+  routes: readonly ReadonlyRouteDefinition[];
 }
 ```
 
