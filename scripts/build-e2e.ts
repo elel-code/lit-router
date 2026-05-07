@@ -6,6 +6,7 @@ const result = await esbuild.build({
   format: "esm",
   outfile: "dist-e2e/router.bundle.js",
   platform: "browser",
+  external: ["lit", "lit/decorators.js"],
   target: "esnext",
 });
 

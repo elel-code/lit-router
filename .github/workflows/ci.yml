@@ -45,8 +45,5 @@ jobs:
       - name: Build E2E bundle
         run: deno run -A scripts/build-e2e.ts
 
-      - name: Install Chromium
-        run: npx puppeteer browsers install chrome
-
       - name: Run E2E tests
-        run: deno test -A tests/e2e/e2e_test.ts
+        run: PUPPETEER_EXECUTABLE_PATH=$(which chromium-browser || echo "") deno test -A tests/e2e/e2e_test.ts

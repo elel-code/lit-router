@@ -51,8 +51,10 @@ async function startServer(root: string) {
 // ---------- browser ----------
 
 async function prepareBrowser(port: number) {
+  const execPath = Deno.env.get("PUPPETEER_EXECUTABLE_PATH") || undefined;
   const browser = await puppeteer.launch({
     headless: true,
+    ...(execPath ? { executablePath: execPath } : {}),
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
   const page = await browser.newPage();
@@ -89,6 +91,14 @@ function indexHtml(routerScript: string, componentsScript: string) {
 <head><meta charset="utf-8"><base href="/"></head>
 <body>
   <router-view></router-view>
+  <script type="importmap">
+  {
+    "imports": {
+      "lit": "https://esm.sh/lit@3.2.1",
+      "lit/decorators.js": "https://esm.sh/lit@3.2.1/decorators.js"
+    }
+  }
+  </script>
   <script type="module" src="/router.bundle.js"></script>
   <script type="module">
     ${routerScript}
