@@ -44,7 +44,7 @@ jobs:
 
       - name: Build E2E bundle
         run: |
-          deno cache npm:@jsr/elelcode__lit-router@1.0.2
+          deno cache npm:@jsr/elelcode__lit-router@1.0.3
           mkdir -p .tmp-e2e dist-e2e
           deno eval '
             await Deno.writeTextFile(

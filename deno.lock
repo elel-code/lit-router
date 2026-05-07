@@ -4,8 +4,9 @@
     "jsr:@std/assert@^1.0.15": "1.0.19",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "npm:@happy-dom/global-registrator@^20.0.4": "20.9.0",
-    "npm:@jsr/elelcode__lit-router@*": "1.0.2",
+    "npm:@jsr/elelcode__lit-router@*": "1.0.3",
     "npm:@jsr/elelcode__lit-router@1.0.2": "1.0.2",
+    "npm:@jsr/elelcode__lit-router@1.0.3": "1.0.3",
     "npm:esbuild@0.25.8": "0.25.8",
     "npm:happy-dom@^20.9.0": "20.9.0",
     "npm:lit@^3.3.2": "3.3.2",
@@ -197,6 +198,13 @@
         "lit"
       ],
       "tarball": "https://npm.jsr.io/~/11/@jsr/elelcode__lit-router/1.0.2.tgz"
+    },
+    "@jsr/elelcode__lit-router@1.0.3": {
+      "integrity": "sha512-YlLOrO234Cj7oY5aYExjMI/UgrGwp7ggUEVUbB3BlNouyGd3Pyp6hxFE4RSpeWkwxmSh6Wd1SOCm2eHWXwAKRw==",
+      "dependencies": [
+        "lit"
+      ],
+      "tarball": "https://npm.jsr.io/~/11/@jsr/elelcode__lit-router/1.0.3.tgz"
     },
     "@lit-labs/ssr-dom-shim@1.5.1": {
       "integrity": "sha512-Aou5UdlSpr5whQe8AA/bZG0jMj96CoJIWbGfZ91qieWu5AWUMKw8VR/pAkQkJYvBNhmCcWnZlyyk5oze8JIqYA=="
