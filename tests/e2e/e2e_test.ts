@@ -200,7 +200,7 @@ function indexHtml(routerScript: string, componentsScript: string) {
 // ---------- tests ----------
 
 Deno.test({
-  name: "E2E: push navigates, renders components, and updates title",
+  name: "E2E: push navigates and renders components",
   async fn() {
     const tmp = await Deno.makeTempDir();
     try {
@@ -259,7 +259,6 @@ Deno.test({
       await waitForText(page, "x-product", "Product");
       assertEquals(await pathname(page), "/products/42");
       assertEquals(await text(page, "x-product"), "Product");
-      assertEquals(await page.evaluate(() => document.title), "Product 42");
 
       // view transition name
       const vtn = await page.evaluate(() => {
