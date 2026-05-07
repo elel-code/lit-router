@@ -309,7 +309,8 @@ Available events:
   `forward|backward|none`. On `<router-view>`, it fires later, after the
   rendered branch has mounted.
 - `route-tree-change`: route definitions changed at runtime. Use this for menus,
-  plugin registries, or permission-driven shells.
+  plugin registries, or permission-driven shells. `event.detail.routeCount` is
+  cheap to read; `event.detail.routes` creates a cloned snapshot on demand.
 - `route-error`: guard, load, or commit failure.
 - `route-loading-start` / `route-loading-end`: async route loading entered or
   finished. `event.detail.pending` is the current in-flight loading count.

@@ -85,6 +85,11 @@ Gets a cloned snapshot of the current route tree.
 Assigning `router.routes = [...]` replaces the full tree and triggers a route
 refresh.
 
+#### `router.cloneRoutes(): RouteDefinition[]`
+
+Returns a cloned snapshot of the current route tree. This is equivalent to the
+getter, but makes the allocation explicit in call sites.
+
 #### `router.basePath: string`
 
 Current base path. Prefer `configure({ basePath })` when changing it at runtime
@@ -288,6 +293,9 @@ Fires after runtime route-tree changes.
 - `"insert"`
 - `"remove"`
 - `"batch"`
+
+`routeCount` reports the total number of route definitions. `routes` is a cloned
+snapshot and is created lazily when the property is read.
 
 #### `route-loading-start`
 
@@ -703,6 +711,7 @@ interface RouteNotFoundDetail {
 ```ts
 interface RouteTreeChangeDetail {
   reason: "replace" | "insert" | "remove" | "batch";
+  routeCount: number;
   routes: RouteDefinition[];
 }
 ```

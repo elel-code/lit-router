@@ -702,10 +702,8 @@ export class RouterView extends LitElement {
       return;
     }
 
-    if (this.viewport) {
-      this.viewport.tabIndex = -1;
-      this.viewport.focus();
-    }
+    this.tabIndex = -1;
+    this.focus();
   }
 
   private moveFocusIntoFallback(kind: "404" | "error"): void {

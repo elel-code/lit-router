@@ -83,6 +83,11 @@ const router = new Router({
 
 直接赋值 `router.routes = [...]` 会整体替换路由树，并触发一次重新匹配。
 
+#### `router.cloneRoutes(): RouteDefinition[]`
+
+返回当前路由树的克隆快照。它与 getter
+语义相同，但能让调用点更明确地表达这里会分配快照。
+
 #### `router.basePath: string`
 
 当前 `basePath`。如果要在运行时修改，建议使用
@@ -283,6 +288,9 @@ router.addEventListener("route-change", (event) => {
 - `"insert"`
 - `"remove"`
 - `"batch"`
+
+`routeCount` 表示路由定义总数。`routes`
+是克隆快照，并且只有在读取该属性时才会创建。
 
 #### `route-loading-start`
 
@@ -693,6 +701,7 @@ interface RouteNotFoundDetail {
 ```ts
 interface RouteTreeChangeDetail {
   reason: "replace" | "insert" | "remove" | "batch";
+  routeCount: number;
   routes: RouteDefinition[];
 }
 ```

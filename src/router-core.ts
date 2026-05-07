@@ -209,6 +209,7 @@ export interface RouteSelector {
 
 export interface RouteTreeChangeDetail {
   reason: "replace" | "insert" | "remove" | "batch";
+  routeCount: number;
   routes: RouteDefinition[];
 }
 
@@ -732,6 +733,13 @@ function cloneRouteDefinitions(routes: RouteDefinition[]): RouteDefinition[] {
   return routes.map((route) => cloneRouteDefinition(route));
 }
 
+function countRouteDefinitions(routes: RouteDefinition[]): number {
+  return routes.reduce(
+    (count, route) => count + 1 + countRouteDefinitions(route.children ?? []),
+    0,
+  );
+}
+
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return (
     typeof value === "object" &&
@@ -1012,6 +1020,7 @@ export class Router extends EventTarget {
   private compiledRoutes: CompiledRouteDefinition[] = [];
   private routeIds = new Map<string, NamedRouteBranch>();
   private namedRoutes = new Map<string, NamedRouteBranch>();
+  private routeCount = 0;
   private readonly historyEntryOrders = new Map<string, number>();
   private nextHistoryEntryOrder = 0;
   private navigationId = 0;
@@ -1132,7 +1141,7 @@ export class Router extends EventTarget {
   }
 
   get routes(): RouteDefinition[] {
-    return cloneRouteDefinitions(this.routeTree);
+    return this.cloneRoutes();
   }
 
   set routes(routes: RouteDefinition[]) {
@@ -1352,6 +1361,10 @@ export class Router extends EventTarget {
   ): RouterLinkAttributes {
     const href = this.link(location);
     return options.replace ? { href, "data-router-replace": "" } : { href };
+  }
+
+  cloneRoutes(): RouteDefinition[] {
+    return cloneRouteDefinitions(this.routeTree);
   }
 
   get lastError(): RouteErrorDetail | undefined {
@@ -1629,6 +1642,7 @@ export class Router extends EventTarget {
     );
     this.routeIds = buildRouteIdIndex(this.routeTree);
     this.namedRoutes = buildNamedRouteIndex(this.routeTree);
+    this.routeCount = countRouteDefinitions(this.routeTree);
   }
 
   private notifyRouteTreeChanged(
@@ -1649,12 +1663,22 @@ export class Router extends EventTarget {
   private dispatchRouteTreeChange(
     reason: RouteTreeChangeDetail["reason"],
   ): void {
+    let routesSnapshot: RouteDefinition[] | undefined;
+    const detail = {
+      reason,
+      routeCount: this.routeCount,
+    } as RouteTreeChangeDetail;
+    Object.defineProperty(detail, "routes", {
+      enumerable: true,
+      get: () => {
+        routesSnapshot ??= this.cloneRoutes();
+        return routesSnapshot;
+      },
+    });
+
     this.dispatchEvent(
       new CustomEvent<RouteTreeChangeDetail>("route-tree-change", {
-        detail: {
-          reason,
-          routes: this.routes,
-        },
+        detail,
       }),
     );
   }

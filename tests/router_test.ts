@@ -1034,7 +1034,15 @@ Deno.test("unrelated route insertion emits route-tree-change without route-chang
 
     assertEquals(routeChanges.length, 1);
     assertEquals(routeChanges[0]?.reason, "insert");
+    assertEquals(routeChanges[0]?.routeCount, 2);
     assertEquals(routeChanges[0]?.routes.length, 2);
+    assertEquals(routeChanges[0]?.routes, routeChanges[0]?.routes);
+    routeChanges[0]?.routes.push({
+      path: "mutated-event-snapshot",
+      name: "mutated-event-snapshot",
+      component: "test-route-alt",
+    });
+    assertEquals(router.routes.length, 2);
     assertEquals(navigationChanges, 0);
     assertEquals(router.current.localPathname, "/");
   });
@@ -1322,6 +1330,7 @@ Deno.test("router routes getter returns a snapshot and setter applies a replacem
       thrown.message.includes('Unknown route name "ignored"'),
       true,
     );
+    assertEquals(router.cloneRoutes().length, 1);
 
     router.routes = [
       ...router.routes,
@@ -1961,11 +1970,13 @@ Deno.test("router-view exposes transition direction on the host element", async 
 
     await settle(view);
     assertEquals(view.dataset.transitionDirection, "none");
+    assertEquals(dom.document.activeElement, view);
 
     router.push("/next");
     await settle(view);
     assertEquals(router.current.direction, "forward");
     assertEquals(view.dataset.transitionDirection, "forward");
+    assertEquals(dom.document.activeElement, view);
 
     dom.history.back();
     await settle(view);
