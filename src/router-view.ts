@@ -54,10 +54,16 @@ export class RouterView extends LitElement {
     direction: "none",
   };
 
-  private renderedElements: HTMLElement[] = [];
+  private renderedBranches = new Map<string, HTMLElement[]>();
   private readonly scrollManager = new ScrollManager({ maxPositions: 50 });
-  private readonly validatedChildOutlets = new WeakSet<HTMLElement>();
-  private pendingChildOutletChecks = new Map<HTMLElement, RouteDefinition>();
+  private readonly validatedChildOutlets = new WeakMap<
+    HTMLElement,
+    Set<string>
+  >();
+  private pendingChildOutletChecks = new Map<
+    HTMLElement,
+    Map<string, RouteDefinition>
+  >();
   private subscribedRouter?: Router;
   private commitId = 0;
 
@@ -93,8 +99,8 @@ export class RouterView extends LitElement {
     }
 
     if (changed.has("childSlot") && this.activeDetail.branch.length > 0) {
-      this.renderedElements = [];
-      this.mountBranch(this.activeDetail, {
+      this.renderedBranches.clear();
+      this.mountBranch({
         ...this.activeDetail,
         branch: [],
       });
@@ -111,6 +117,12 @@ export class RouterView extends LitElement {
 
   private get viewport(): HTMLDivElement | null {
     return this.renderRoot.querySelector<HTMLDivElement>(".viewport");
+  }
+
+  private getRenderRootActiveElement(): Element | null {
+    return "activeElement" in this.renderRoot
+      ? (this.renderRoot.activeElement as Element | null)
+      : null;
   }
 
   push(url: string | URL | RouteLocation): void {
@@ -248,7 +260,7 @@ export class RouterView extends LitElement {
     this.pendingChildOutletChecks.clear();
 
     if (options.clearRenderedElements) {
-      this.renderedElements = [];
+      this.renderedBranches.clear();
     }
   }
 
@@ -346,7 +358,10 @@ export class RouterView extends LitElement {
         return false;
       }
 
-      const renderedElements = this.mountBranch(detail, previousDetail);
+      const previousRenderedBranches = new Map(this.renderedBranches);
+      const previousFocusedElement = this.getRenderRootActiveElement() ??
+        browserDocument().activeElement;
+      const renderedElements = this.mountBranch(detail);
       await this.waitForRouteElements(renderedElements);
       await this.validatePendingChildOutlets();
       if (this.isCommitStale(currentCommitId)) {
@@ -356,7 +371,12 @@ export class RouterView extends LitElement {
       this.activeDetail = detail;
       this.showRouteStage();
       this.restoreScrollPosition(detail);
-      this.moveFocusIntoRoute();
+      this.moveFocusIntoRoute(
+        detail,
+        previousDetail,
+        previousRenderedBranches,
+        previousFocusedElement,
+      );
       return true;
     };
 
@@ -402,133 +422,189 @@ export class RouterView extends LitElement {
 
   private mountBranch(
     detail: RouterChangeDetail,
-    previousDetail: RouterChangeDetail,
   ): HTMLElement[] {
-    if (!this.viewport) {
+    const viewport = this.viewport;
+    if (!viewport) {
       return [];
     }
 
     if (detail.branch.length === 0) {
-      this.viewport.replaceChildren();
-      this.viewport.dataset.path = detail.pathname;
-      this.renderedElements = [];
+      viewport.replaceChildren();
+      viewport.dataset.path = detail.pathname;
+      this.renderedBranches.clear();
       return [];
     }
 
-    const { newElements, diffIndex } = this.reuseBranchPrefix(
+    const oldElements = this.collectRenderedElements();
+    const oldElementByRoute = this.collectRenderedElementByRoute();
+    const nextElementByRoute = new Map<RouteDefinition, HTMLElement>();
+    const nextBranches = new Map<string, HTMLElement[]>();
+    const mountedElements = new Set<HTMLElement>();
+    const mountedList: HTMLElement[] = [];
+
+    this.mountRouteBranch({
+      slotName: DEFAULT_CHILD_SLOT,
+      branch: detail.branch,
       detail,
-      previousDetail,
-    );
-    this.appendBranchTail(detail, newElements, diffIndex);
-    return this.finalizeBranchMount(
-      detail,
-      previousDetail,
-      newElements,
-      diffIndex,
-    );
-  }
+      oldElementByRoute,
+      nextElementByRoute,
+      nextBranches,
+      mountedElements,
+      mountedList,
+    });
 
-  private reuseBranchPrefix(
-    detail: RouterChangeDetail,
-    previousDetail: RouterChangeDetail,
-  ): {
-    newElements: HTMLElement[];
-    diffIndex: number;
-  } {
-    const newElements: HTMLElement[] = [];
-    let diffIndex = 0;
-
-    while (
-      diffIndex < detail.branch.length &&
-      diffIndex < previousDetail.branch.length &&
-      detail.branch[diffIndex] === previousDetail.branch[diffIndex]
-    ) {
-      const element = this.renderedElements[diffIndex];
-      if (!element) {
-        break;
-      }
-
-      this.applyRouteState(element, detail.branch[diffIndex], detail);
-      element.setAttribute("data-route-depth", String(diffIndex));
-      newElements.push(element);
-      diffIndex += 1;
+    const root = nextBranches.get(DEFAULT_CHILD_SLOT)?.[0];
+    if (root && viewport.firstElementChild !== root) {
+      viewport.replaceChildren(root);
     }
 
-    return { newElements, diffIndex };
+    for (
+      const [slotName, branch] of Object.entries(
+        detail.slotBranches ?? {},
+      ).sort(([left], [right]) => left.localeCompare(right))
+    ) {
+      this.mountRouteBranch({
+        slotName,
+        branch,
+        detail,
+        oldElementByRoute,
+        nextElementByRoute,
+        nextBranches,
+        mountedElements,
+        mountedList,
+      });
+    }
+
+    for (const element of oldElements.reverse()) {
+      if (!mountedElements.has(element)) {
+        element.remove();
+      }
+    }
+
+    viewport.dataset.path = detail.pathname;
+    this.renderedBranches = nextBranches;
+    return mountedList;
   }
 
-  private appendBranchTail(
-    detail: RouterChangeDetail,
-    newElements: HTMLElement[],
-    diffIndex: number,
-  ): void {
-    for (let index = diffIndex; index < detail.branch.length; index += 1) {
-      newElements.push(
-        this.createRouteElement(detail.branch[index], detail, index),
+  private mountRouteBranch(options: {
+    slotName: string;
+    branch: RouteDefinition[];
+    detail: RouterChangeDetail;
+    oldElementByRoute: Map<RouteDefinition, HTMLElement>;
+    nextElementByRoute: Map<RouteDefinition, HTMLElement>;
+    nextBranches: Map<string, HTMLElement[]>;
+    mountedElements: Set<HTMLElement>;
+    mountedList: HTMLElement[];
+  }): void {
+    const elements: HTMLElement[] = [];
+    const branchParams = options.slotName === DEFAULT_CHILD_SLOT
+      ? options.detail.params
+      : options.detail.slotParams?.[options.slotName] ??
+        options.detail.slots?.[options.slotName]?.params ??
+        options.detail.params;
+
+    for (let index = 0; index < options.branch.length; index += 1) {
+      const route = options.branch[index];
+      let element = options.nextElementByRoute.get(route) ??
+        options.oldElementByRoute.get(route);
+      const created = !element;
+      const routeSlot = index === 0
+        ? DEFAULT_CHILD_SLOT
+        : this.routeSlot(route);
+
+      if (!element) {
+        element = this.createRouteElement(
+          route,
+          options.detail,
+          index,
+          routeSlot,
+          options.branch,
+          branchParams,
+        );
+      } else if (!options.nextElementByRoute.has(route)) {
+        this.applyRouteState(
+          element,
+          route,
+          options.detail,
+          routeSlot,
+          options.branch,
+          branchParams,
+        );
+      }
+
+      element.setAttribute("data-route-depth", String(index));
+      options.nextElementByRoute.set(route, element);
+      options.mountedElements.add(element);
+      if (!options.mountedList.includes(element)) {
+        options.mountedList.push(element);
+      }
+      elements.push(element);
+
+      if (index === 0) {
+        continue;
+      }
+
+      const parent = elements[index - 1];
+      if (element.slot !== routeSlot) {
+        element.slot = routeSlot;
+      }
+
+      if (created || element.parentElement !== parent) {
+        parent.append(element);
+      }
+      this.scheduleChildOutletValidation(
+        parent,
+        options.branch[index - 1],
+        routeSlot,
       );
     }
 
-    for (let index = diffIndex; index < newElements.length; index += 1) {
-      this.attachNestedBranchElement(detail, newElements, index, diffIndex);
-    }
+    options.nextBranches.set(options.slotName, elements);
   }
 
-  private attachNestedBranchElement(
-    detail: RouterChangeDetail,
-    newElements: HTMLElement[],
-    index: number,
-    diffIndex: number,
-  ): void {
-    if (index === 0) {
-      return;
-    }
-
-    const parent = newElements[index - 1];
-    const child = newElements[index];
-    child.slot = this.childSlot;
-
-    if (index === diffIndex) {
-      this.removeProjectedChild(parent);
-    }
-
-    parent.append(child);
-    this.scheduleChildOutletValidation(parent, detail.branch[index - 1]);
+  private routeSlot(route: RouteDefinition): string {
+    return route.slot?.trim() || this.childSlot;
   }
 
-  private finalizeBranchMount(
-    detail: RouterChangeDetail,
-    previousDetail: RouterChangeDetail,
-    newElements: HTMLElement[],
-    diffIndex: number,
-  ): HTMLElement[] {
-    if (diffIndex === 0) {
-      this.viewport?.replaceChildren(newElements[0]);
-    }
+  private collectRenderedElements(): HTMLElement[] {
+    const elements: HTMLElement[] = [];
+    const seen = new Set<HTMLElement>();
+    for (const branch of this.renderedBranches.values()) {
+      for (const element of branch) {
+        if (seen.has(element)) {
+          continue;
+        }
 
-    if (
-      previousDetail.branch.length > detail.branch.length &&
-      newElements.length > 0
-    ) {
-      this.removeProjectedChild(newElements[newElements.length - 1]);
+        seen.add(element);
+        elements.push(element);
+      }
     }
-
-    this.viewport?.setAttribute("data-path", detail.pathname);
-    this.renderedElements = newElements;
-    return newElements;
+    return elements;
   }
 
-  private removeProjectedChild(parent: HTMLElement): void {
-    const oldChild = Array.from(parent.children).find(
-      (candidate) =>
-        candidate instanceof HTMLElement && candidate.slot === this.childSlot,
-    );
-    oldChild?.remove();
+  private collectRenderedElementByRoute(): Map<RouteDefinition, HTMLElement> {
+    const map = new Map<RouteDefinition, HTMLElement>();
+    for (const [slotName, branch] of this.renderedBranches) {
+      const routes = slotName === DEFAULT_CHILD_SLOT
+        ? this.activeDetail.branch
+        : this.activeDetail.slotBranches?.[slotName] ?? [];
+      for (let index = 0; index < routes.length; index += 1) {
+        const element = branch[index];
+        if (element && !map.has(routes[index])) {
+          map.set(routes[index], element);
+        }
+      }
+    }
+    return map;
   }
 
   private createRouteElement(
     route: RouteDefinition,
     detail: RouterChangeDetail,
     depth: number,
+    slot: string,
+    branch: RouteDefinition[],
+    params: Record<string, string>,
   ): HTMLElement {
     let element: HTMLElement;
 
@@ -540,7 +616,7 @@ export class RouterView extends LitElement {
       element = browserDocument().createElement("section");
     }
 
-    this.applyRouteState(element, route, detail);
+    this.applyRouteState(element, route, detail, slot, branch, params);
     element.setAttribute("data-route-depth", String(depth));
     return element;
   }
@@ -549,10 +625,15 @@ export class RouterView extends LitElement {
     element: HTMLElement,
     route: RouteDefinition,
     detail: RouterChangeDetail,
+    slot: string,
+    branch: RouteDefinition[],
+    params: Record<string, string>,
   ): void {
     const routeContext: RouteContext = {
       detail,
-      params: detail.params,
+      params,
+      slot,
+      branch,
     };
     const assignProps = () => {
       Object.assign(element, route.props ?? {});
@@ -604,28 +685,37 @@ export class RouterView extends LitElement {
   private scheduleChildOutletValidation(
     element: HTMLElement,
     route: RouteDefinition,
+    slotName: string,
   ): void {
-    if (this.validatedChildOutlets.has(element)) {
+    if (this.validatedChildOutlets.get(element)?.has(slotName)) {
       return;
     }
 
-    this.pendingChildOutletChecks.set(element, route);
+    let slots = this.pendingChildOutletChecks.get(element);
+    if (!slots) {
+      slots = new Map();
+      this.pendingChildOutletChecks.set(element, slots);
+    }
+    slots.set(slotName, route);
   }
 
   private async validatePendingChildOutlets(): Promise<void> {
     const pendingChecks = this.pendingChildOutletChecks;
     this.pendingChildOutletChecks = new Map();
 
-    for (const [element, route] of pendingChecks) {
-      await this.validateChildOutlet(element, route);
+    for (const [element, slots] of pendingChecks) {
+      for (const [slotName, route] of slots) {
+        await this.validateChildOutlet(element, route, slotName);
+      }
     }
   }
 
   private async validateChildOutlet(
     element: HTMLElement,
     route: RouteDefinition,
+    slotName: string,
   ): Promise<void> {
-    if (this.validatedChildOutlets.has(element)) {
+    if (this.validatedChildOutlets.get(element)?.has(slotName)) {
       return;
     }
 
@@ -641,15 +731,20 @@ export class RouterView extends LitElement {
       return;
     }
 
-    this.validatedChildOutlets.add(element);
+    let validatedSlots = this.validatedChildOutlets.get(element);
+    if (!validatedSlots) {
+      validatedSlots = new Set();
+      this.validatedChildOutlets.set(element, validatedSlots);
+    }
+    validatedSlots.add(slotName);
 
     if (!element.shadowRoot) {
       return;
     }
 
-    const outlet = element.shadowRoot.querySelector<HTMLSlotElement>(
-      `slot[name="${this.childSlot}"]`,
-    );
+    const outlet = Array.from(
+      element.shadowRoot.querySelectorAll<HTMLSlotElement>("slot"),
+    ).find((slot) => slot.name === slotName);
     if (outlet) {
       return;
     }
@@ -658,7 +753,7 @@ export class RouterView extends LitElement {
       ? `route "${route.name}"`
       : `path "${route.path || "/"}"`;
     console.warn(
-      `[router-view] Parent component <${element.localName}> for ${routeLabel} is missing <slot name="${this.childSlot}">, so nested routes cannot render into its shadow root.`,
+      `[router-view] Parent component <${element.localName}> for ${routeLabel} is missing <slot name="${slotName}">, so nested routes cannot render into its shadow root.`,
     );
   }
 
@@ -693,7 +788,31 @@ export class RouterView extends LitElement {
     this.scrollManager.restore(detail.historyKey, detail.url);
   }
 
-  private moveFocusIntoRoute(): void {
+  private moveFocusIntoRoute(
+    detail: RouterChangeDetail,
+    previousDetail: RouterChangeDetail,
+    previousRenderedBranches: Map<string, HTMLElement[]>,
+    previousFocusedElement: Element | null,
+  ): void {
+    const changedSlots = this.changedSideSlots(previousDetail, detail);
+    if (
+      this.sameBranch(previousDetail.branch, detail.branch) &&
+      changedSlots.length > 0
+    ) {
+      if (
+        previousFocusedElement &&
+        this.focusWasInBranches(
+          previousFocusedElement,
+          previousRenderedBranches,
+          changedSlots,
+        )
+      ) {
+        const sideFocusTarget = this.findBranchFocusTarget(changedSlots);
+        sideFocusTarget?.focus();
+      }
+      return;
+    }
+
     const focusTarget = this.viewport?.querySelector<HTMLElement>(
       "[data-route-focus]",
     );
@@ -704,6 +823,61 @@ export class RouterView extends LitElement {
 
     this.tabIndex = -1;
     this.focus();
+  }
+
+  private changedSideSlots(
+    previousDetail: RouterChangeDetail,
+    detail: RouterChangeDetail,
+  ): string[] {
+    const previousSlots = previousDetail.slotBranches ?? {};
+    const nextSlots = detail.slotBranches ?? {};
+    const slotNames = new Set([
+      ...Object.keys(previousSlots),
+      ...Object.keys(nextSlots),
+    ]);
+
+    return [...slotNames].filter((slotName) =>
+      !this.sameBranch(previousSlots[slotName] ?? [], nextSlots[slotName] ?? [])
+    ).sort();
+  }
+
+  private sameBranch(
+    previousBranch: RouteDefinition[],
+    nextBranch: RouteDefinition[],
+  ): boolean {
+    return previousBranch.length === nextBranch.length &&
+      previousBranch.every((route, index) => route === nextBranch[index]);
+  }
+
+  private focusWasInBranches(
+    focusedElement: Element,
+    branches: Map<string, HTMLElement[]>,
+    slotNames: string[],
+  ): boolean {
+    for (const slotName of slotNames) {
+      for (const element of branches.get(slotName) ?? []) {
+        if (element === focusedElement || element.contains(focusedElement)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private findBranchFocusTarget(slotNames: string[]): HTMLElement | null {
+    for (const slotName of slotNames) {
+      for (const element of this.renderedBranches.get(slotName) ?? []) {
+        if (element.hasAttribute("data-route-focus")) {
+          return element;
+        }
+
+        const target = element.querySelector<HTMLElement>("[data-route-focus]");
+        if (target) {
+          return target;
+        }
+      }
+    }
+    return null;
   }
 
   private moveFocusIntoFallback(kind: "404" | "error"): void {

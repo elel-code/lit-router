@@ -26,8 +26,27 @@ jobs:
       - name: Check sources
         run: deno task check
 
-      - name: Run tests
+      - name: Run unit tests
         run: deno task test
 
       - name: Verify JSR package
         run: deno publish --dry-run --allow-dirty
+
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Build E2E bundle
+        run: deno run -A scripts/build-e2e.ts
+
+      - name: Install Chromium
+        run: npx puppeteer browsers install chrome
+
+      - name: Run E2E tests
+        run: deno test -A tests/e2e/e2e_test.ts

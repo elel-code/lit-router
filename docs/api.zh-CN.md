@@ -36,12 +36,15 @@ import {
   type RouteQueryValue,
   Router,
   type RouterChangeDetail,
+  type RouterChangeDetailJson,
   type RouteResolveOptions,
   type RouterEvent,
   type RouterEventListener,
   type RouterEventMap,
   type RouterLinkAttributes,
   type RouterLinkOptions,
+  type RouterSlotDetail,
+  type RouterSlotDetailJson,
   RouterView,
   type RouteSelector,
   type RouteTreeChangeDetail,
@@ -510,6 +513,7 @@ interface RouteDefinition {
   id?: string;
   name?: string;
   path: string;
+  slot?: string;
   title?: string;
   viewTransitionName?: string;
   component?: string | RouteComponentFactory;
@@ -527,6 +531,8 @@ interface RouteDefinition {
 - `id`：运行时树管理标识，用于插入、删除、替换分支
 - `name`：路由名，供 `push({ name })`、`replace({ name })`、`link()` 使用
 - `path`：路径片段。`""` 表示 index，`"*"` 表示兜底
+- `slot`：当前路由投影到父组件内的 slot 名，默认是 `"route-child"`。 `"404"` 和
+  `"error"` 是 `<router-view>` fallback 保留名
 - `title`：文档标题模板，commit 时会展开 `:param`
 - `viewTransitionName`：当前路由作为叶子路由时，`<router-view>` 使用的
   `view-transition-name`
@@ -690,10 +696,13 @@ setRouteContext(context: RouteContext): void
 interface RouteContext {
   detail: RouterChangeDetail;
   params: Record<string, string>;
+  slot: string;
+  branch: RouteDefinition[];
 }
 ```
 
-其中 `detail.query` 是 `URLSearchParams`。
+其中 `detail.query` 是 `URLSearchParams`。`slot` 表示当前组件被投影到的
+slot，`branch` 表示该 slot 对应的匹配分支。
 
 ## 事件详情类型
 
@@ -710,9 +719,17 @@ interface RouterChangeDetail {
   params: Record<string, string>;
   branch: RouteDefinition[];
   leaf?: RouteDefinition;
+  slotBranches?: Record<string, RouteDefinition[]>;
+  slotParams?: Record<string, Record<string, string>>;
+  slots?: Record<string, {
+    branch: RouteDefinition[];
+    leaf?: RouteDefinition;
+    params: Record<string, string>;
+  }>;
   url: URL;
   historyKey: string;
   direction: "forward" | "backward" | "none";
+  toJSON?: () => RouterChangeDetailJson;
 }
 ```
 
@@ -722,8 +739,23 @@ interface RouterChangeDetail {
 - `localPathname`：相对 `basePath` 的本地 pathname
 - `branch`：从根到叶的命中分支
 - `leaf`：命中的叶子路由
+- `slotBranches`：非主 slot 的命中分支，按 slot 名索引
+- `slotParams`：每条非主 slot 分支对应的 params
+- `slots`：包含主 `"route-child"` slot 在内的 slot 详情索引
+- `toJSON`：把 `query` 序列化成 plain object、把 `url` 序列化成字符串，供
+  `JSON.stringify(detail)` 使用
 - `historyKey`：history entry 级别的方向与滚动跟踪键
 - `direction`：当前导航方向
+
+### `RouterSlotDetail`
+
+```ts
+interface RouterSlotDetail {
+  branch: RouteDefinition[];
+  leaf?: RouteDefinition;
+  params: Record<string, string>;
+}
+```
 
 ### `RouteLoadingDetail`
 
@@ -731,12 +763,14 @@ interface RouterChangeDetail {
 interface RouteLoadingDetail {
   url: URL;
   branch: RouteDefinition[];
+  loadingSlots?: string[];
   pending: number;
   direction: NavigationDirection;
 }
 ```
 
-`pending` 表示当前路由器里仍在进行中的懒加载数量。
+`pending` 表示当前路由器里仍在进行中的懒加载数量。`loadingSlots`
+表示本次导航中需要加载的 slot 名。
 
 ### `RouteErrorDetail`
 

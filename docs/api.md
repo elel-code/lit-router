@@ -36,12 +36,15 @@ import {
   type RouteQueryValue,
   Router,
   type RouterChangeDetail,
+  type RouterChangeDetailJson,
   type RouteResolveOptions,
   type RouterEvent,
   type RouterEventListener,
   type RouterEventMap,
   type RouterLinkAttributes,
   type RouterLinkOptions,
+  type RouterSlotDetail,
+  type RouterSlotDetailJson,
   RouterView,
   type RouteSelector,
   type RouteTreeChangeDetail,
@@ -516,6 +519,7 @@ interface RouteDefinition {
   id?: string;
   name?: string;
   path: string;
+  slot?: string;
   title?: string;
   viewTransitionName?: string;
   component?: string | RouteComponentFactory;
@@ -534,6 +538,8 @@ Field notes:
 - `name`: stable route name for `push({ name })`, `replace({ name })`, and
   `link()`
 - `path`: route segment. Use `""` for index routes and `"*"` for catch-all
+- `slot`: parent slot name used by this route. Defaults to `"route-child"`.
+  `"404"` and `"error"` are reserved for `<router-view>` fallbacks.
 - `title`: document title template. `:param` tokens are expanded on commit
 - `viewTransitionName`: route-level `view-transition-name` used by
   `<router-view>` when this route is the leaf
@@ -701,10 +707,13 @@ setRouteContext(context: RouteContext): void
 interface RouteContext {
   detail: RouterChangeDetail;
   params: Record<string, string>;
+  slot: string;
+  branch: RouteDefinition[];
 }
 ```
 
-`detail.query` is a `URLSearchParams`.
+`detail.query` is a `URLSearchParams`. `slot` is the slot this component was
+projected into, and `branch` is the branch for that slot.
 
 ## Event detail types
 
@@ -721,9 +730,17 @@ interface RouterChangeDetail {
   params: Record<string, string>;
   branch: RouteDefinition[];
   leaf?: RouteDefinition;
+  slotBranches?: Record<string, RouteDefinition[]>;
+  slotParams?: Record<string, Record<string, string>>;
+  slots?: Record<string, {
+    branch: RouteDefinition[];
+    leaf?: RouteDefinition;
+    params: Record<string, string>;
+  }>;
   url: URL;
   historyKey: string;
   direction: "forward" | "backward" | "none";
+  toJSON?: () => RouterChangeDetailJson;
 }
 ```
 
@@ -733,8 +750,23 @@ Field notes:
 - `localPathname`: pathname relative to `basePath`
 - `branch`: matched route branch from root to leaf
 - `leaf`: matched leaf route
+- `slotBranches`: matched non-main slot branches, keyed by slot name
+- `slotParams`: params for each non-main slot branch
+- `slots`: slot-aware detail map including the main `"route-child"` slot
+- `toJSON`: serializes `query` as a plain object and `url` as a string for
+  `JSON.stringify(detail)`
 - `historyKey`: internal key for per-entry direction and scroll tracking
 - `direction`: computed navigation direction
+
+### `RouterSlotDetail`
+
+```ts
+interface RouterSlotDetail {
+  branch: RouteDefinition[];
+  leaf?: RouteDefinition;
+  params: Record<string, string>;
+}
+```
 
 ### `RouteLoadingDetail`
 
@@ -742,12 +774,14 @@ Field notes:
 interface RouteLoadingDetail {
   url: URL;
   branch: RouteDefinition[];
+  loadingSlots?: string[];
   pending: number;
   direction: NavigationDirection;
 }
 ```
 
-`pending` is the current in-flight load count across the router.
+`pending` is the current in-flight load count across the router. `loadingSlots`
+contains the slot names whose matched branches need loading for this navigation.
 
 ### `RouteErrorDetail`
 

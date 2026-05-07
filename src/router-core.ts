@@ -74,6 +74,7 @@ export interface RouteDefinition {
   id?: string;
   name?: string;
   path: string;
+  slot?: string;
   title?: string;
   viewTransitionName?: string;
   /**
@@ -148,6 +149,13 @@ interface RouteRecord {
   params: Record<string, string>;
 }
 
+interface MatchedBranch {
+  records: RouteRecord[];
+  params: Record<string, string>;
+}
+
+type MatchedSlotBranches = Record<string, MatchedBranch>;
+
 type NamedRouteBranch = RouteDefinition[];
 
 interface CompiledRouteDefinition {
@@ -155,6 +163,7 @@ interface CompiledRouteDefinition {
   normalizedPath: string;
   pattern: URLPattern | null;
   children: CompiledRouteDefinition[];
+  childrenBySlot: Map<string, CompiledRouteDefinition[]>;
   minSegments: number;
   maxSegments: number;
   specificity: number[];
@@ -171,7 +180,41 @@ export interface RouterChangeDetail {
   params: Record<string, string>;
   branch: RouteDefinition[];
   leaf?: RouteDefinition;
+  slotBranches?: Record<string, RouteDefinition[]>;
+  slotParams?: Record<string, Record<string, string>>;
+  slots?: Record<string, RouterSlotDetail>;
   url: URL;
+  historyKey: string;
+  direction: NavigationDirection;
+  toJSON?: () => RouterChangeDetailJson;
+}
+
+export interface RouterSlotDetail {
+  branch: RouteDefinition[];
+  leaf?: RouteDefinition;
+  params: Record<string, string>;
+}
+
+export interface RouterSlotDetailJson {
+  branch: RouteDefinition[];
+  leaf?: RouteDefinition;
+  params: Record<string, string>;
+}
+
+export interface RouterChangeDetailJson {
+  pathname: string;
+  localPathname: string;
+  basePath: string;
+  search: string;
+  query: Record<string, string | string[]>;
+  hash: string;
+  params: Record<string, string>;
+  branch: RouteDefinition[];
+  leaf?: RouteDefinition;
+  slotBranches?: Record<string, RouteDefinition[]>;
+  slotParams?: Record<string, Record<string, string>>;
+  slots?: Record<string, RouterSlotDetailJson>;
+  url: string;
   historyKey: string;
   direction: NavigationDirection;
 }
@@ -179,6 +222,8 @@ export interface RouterChangeDetail {
 export interface RouteContext {
   detail: RouterChangeDetail;
   params: Record<string, string>;
+  slot: string;
+  branch: RouteDefinition[];
 }
 
 export interface RouteContextReceiver {
@@ -202,6 +247,7 @@ export interface RouteErrorDetail {
 export interface RouteLoadingDetail {
   url: URL;
   branch: RouteDefinition[];
+  loadingSlots?: string[];
   pending: number;
   direction: NavigationDirection;
 }
@@ -272,6 +318,8 @@ function resolveRouteSelector(
 }
 
 const ROOT_PATH = "/";
+const DEFAULT_CHILD_SLOT = "route-child";
+const RESERVED_ROUTE_SLOTS = new Set(["404", "error"]);
 const ROUTE_TOKEN_PATTERN = /:([A-Za-z0-9_-]+)(\([^)]*\))?([?+*])?/g;
 const HISTORY_ENTRY_KEY = "__litRouterEntryKey";
 const EXACT_PATH_END_SPECIFICITY = 3;
@@ -346,11 +394,34 @@ function normalizeRouteId(id: string): string {
   return normalized;
 }
 
-function candidatePath(segments: string[], count: number): string {
-  if (count === 0) {
-    return ROOT_PATH;
+function normalizeRouteSlot(slot: string | undefined): string {
+  if (slot === undefined) {
+    return DEFAULT_CHILD_SLOT;
   }
-  return `/${segments.slice(0, count).join("/")}`;
+
+  const normalized = slot.trim();
+  if (!normalized) {
+    throw new Error("Route slot must be a non-empty string.");
+  }
+
+  if (RESERVED_ROUTE_SLOTS.has(normalized)) {
+    throw new Error(`Route slot "${normalized}" is reserved.`);
+  }
+
+  return normalized;
+}
+
+function candidatePrefixes(segments: string[]): string[] {
+  const prefixes = new Array<string>(segments.length + 1);
+  prefixes[0] = ROOT_PATH;
+
+  let current = "";
+  for (let index = 0; index < segments.length; index += 1) {
+    current += `${ROOT_PATH}${segments[index]}`;
+    prefixes[index + 1] = current;
+  }
+
+  return prefixes;
 }
 
 function decodeSegment(segment: string): string {
@@ -512,6 +583,7 @@ function decodePatternParams(
 function execPatternMatches(
   route: CompiledRouteDefinition,
   remainingSegments: string[],
+  prefixes: string[],
 ): PatternMatch[] {
   const normalized = route.normalizedPath;
 
@@ -538,7 +610,7 @@ function execPatternMatches(
     consumedCount += 1
   ) {
     const result = route.pattern.exec({
-      pathname: candidatePath(remainingSegments, consumedCount),
+      pathname: prefixes[consumedCount],
     });
     if (!result) {
       continue;
@@ -586,7 +658,31 @@ function isSameDetail(
     return false;
   }
 
-  return current.branch.every((route, index) => route === next.branch[index]);
+  if (!current.branch.every((route, index) => route === next.branch[index])) {
+    return false;
+  }
+
+  const currentSlots = current.slotBranches ?? {};
+  const nextSlots = next.slotBranches ?? {};
+  const currentSlotNames = Object.keys(currentSlots).sort();
+  const nextSlotNames = Object.keys(nextSlots).sort();
+
+  if (currentSlotNames.length !== nextSlotNames.length) {
+    return false;
+  }
+
+  return currentSlotNames.every((slotName, index) => {
+    if (slotName !== nextSlotNames[index]) {
+      return false;
+    }
+
+    const currentBranch = currentSlots[slotName] ?? [];
+    const nextBranch = nextSlots[slotName] ?? [];
+    return currentBranch.length === nextBranch.length &&
+      currentBranch.every((route, branchIndex) =>
+        route === nextBranch[branchIndex]
+      );
+  });
 }
 
 function sharedBranchPrefixLength(
@@ -601,6 +697,126 @@ function sharedBranchPrefixLength(
   }
 
   return index;
+}
+
+function branchRoutes(branch: MatchedBranch): RouteDefinition[] {
+  return branch.records.map((record) => record.route);
+}
+
+function createSlotDetail(branch: MatchedBranch): RouterSlotDetail {
+  const routes = branchRoutes(branch);
+  return {
+    branch: routes,
+    leaf: routes.at(-1),
+    params: branch.params,
+  };
+}
+
+function queryToJson(
+  query: URLSearchParams,
+): Record<string, string | string[]> {
+  const output: Record<string, string | string[]> = {};
+  query.forEach((value, key) => {
+    const existing = output[key];
+    if (existing === undefined) {
+      output[key] = value;
+      return;
+    }
+
+    output[key] = Array.isArray(existing) ? [...existing, value] : [
+      existing,
+      value,
+    ];
+  });
+  return output;
+}
+
+function detailToJSON(this: RouterChangeDetail): RouterChangeDetailJson {
+  return {
+    pathname: this.pathname,
+    localPathname: this.localPathname,
+    basePath: this.basePath,
+    search: this.search,
+    query: queryToJson(this.query),
+    hash: this.hash,
+    params: this.params,
+    branch: this.branch,
+    leaf: this.leaf,
+    slotBranches: this.slotBranches,
+    slotParams: this.slotParams,
+    slots: this.slots,
+    url: this.url.href,
+    historyKey: this.historyKey,
+    direction: this.direction,
+  };
+}
+
+function collectMatchedRoutes(detail: RouterChangeDetail): RouteDefinition[] {
+  const routes: RouteDefinition[] = [];
+  const seen = new Set<RouteDefinition>();
+
+  for (const route of detail.branch) {
+    seen.add(route);
+    routes.push(route);
+  }
+
+  const slotBranches = detail.slotBranches ?? {};
+  for (const slotName of Object.keys(slotBranches).sort()) {
+    for (const route of slotBranches[slotName] ?? []) {
+      if (seen.has(route)) {
+        continue;
+      }
+
+      seen.add(route);
+      routes.push(route);
+    }
+  }
+
+  return routes;
+}
+
+function collectLeavingRoutes(
+  from: RouterChangeDetail,
+  to: RouterChangeDetail | null,
+): RouteDefinition[] {
+  const routes: RouteDefinition[] = [];
+  const seen = new Set<RouteDefinition>();
+  const fromSlotBranches = from.slotBranches ?? {};
+  const toSlotBranches = to?.slotBranches ?? {};
+
+  for (const slotName of Object.keys(fromSlotBranches).sort()) {
+    const fromBranch = fromSlotBranches[slotName] ?? [];
+    const toBranch = toSlotBranches[slotName] ?? [];
+    const prefixLength = sharedBranchPrefixLength(fromBranch, toBranch);
+    for (const route of fromBranch.slice(prefixLength).reverse()) {
+      if (from.branch.includes(route) || seen.has(route)) {
+        continue;
+      }
+
+      seen.add(route);
+      routes.push(route);
+    }
+  }
+
+  const mainPrefixLength = sharedBranchPrefixLength(
+    from.branch,
+    to?.branch ?? [],
+  );
+  for (const route of from.branch.slice(mainPrefixLength).reverse()) {
+    if (seen.has(route)) {
+      continue;
+    }
+
+    seen.add(route);
+    routes.push(route);
+  }
+
+  return routes;
+}
+
+function detailBranches(detail: RouterChangeDetail): RouteDefinition[][] {
+  const branches = Object.values(detail.slotBranches ?? {});
+  return detail.branch.length ? [detail.branch, ...branches] : branches;
 }
 
 function toRedirectInstruction(
@@ -729,28 +945,49 @@ function compareRouteSpecificity(
   return left.sortIndex - right.sortIndex;
 }
 
+function groupBySlot(
+  routes: CompiledRouteDefinition[],
+): Map<string, CompiledRouteDefinition[]> {
+  const map = new Map<string, CompiledRouteDefinition[]>();
+  for (const route of routes) {
+    const slot = normalizeRouteSlot(route.route.slot);
+    let group = map.get(slot);
+    if (!group) {
+      group = [];
+      map.set(slot, group);
+    }
+    group.push(route);
+  }
+  return map;
+}
+
 function buildCompiledRoutes(
   routes: RouteDefinition[],
   routePatternCache: Map<string, URLPattern | null>,
 ): CompiledRouteDefinition[] {
-  return routes.map((route, sortIndex) => {
+  const compiled = routes.map((route, sortIndex) => {
+    normalizeRouteSlot(route.slot);
     const normalizedPath = normalizeRoutePath(route.path);
     const { minSegments, maxSegments } = routeSegmentRange(normalizedPath);
+    const children = route.children?.length
+      ? buildCompiledRoutes(route.children, routePatternCache)
+      : [];
     return {
       route,
       normalizedPath,
       pattern: normalizedPath === "*"
         ? null
         : createPattern(normalizedPath, routePatternCache),
-      children: route.children?.length
-        ? buildCompiledRoutes(route.children, routePatternCache)
-        : [],
+      children,
+      childrenBySlot: groupBySlot(children),
       minSegments,
       maxSegments,
       specificity: routeSpecificity(normalizedPath),
       sortIndex,
     };
-  }).sort(compareRouteSpecificity);
+  });
+  compiled.sort(compareRouteSpecificity);
+  return compiled;
 }
 
 function cloneRouteDefinition(route: RouteDefinition): RouteDefinition {
@@ -999,15 +1236,30 @@ function normalizeHash(hash?: string): string {
   return hash.startsWith("#") ? hash : `#${hash}`;
 }
 
-function matchRoutes(
+function matchSlotRoutes(
   routes: CompiledRouteDefinition[],
   remainingSegments: string[],
   parentRecords: RouteRecord[] = [],
   parentParams: Record<string, string> = {},
-): RouteRecord[] | null {
+): MatchedSlotBranches {
+  const slotResults: MatchedSlotBranches = {};
+  const matchCache = new Map<string, PatternMatch[]>();
+  const prefixes = candidatePrefixes(remainingSegments);
+
   for (const route of routes) {
+    const slot = normalizeRouteSlot(route.route.slot);
+    if (slot in slotResults) {
+      continue;
+    }
+
     const normalizedPath = route.normalizedPath;
-    const matches = execPatternMatches(route, remainingSegments);
+    const cacheKey = normalizedPath;
+    let matches = matchCache.get(cacheKey);
+    if (!matches) {
+      matches = execPatternMatches(route, remainingSegments, prefixes);
+      matchCache.set(cacheKey, matches);
+    }
+
     if (matches.length === 0) {
       continue;
     }
@@ -1023,26 +1275,37 @@ function matchRoutes(
 
       const nextRemaining = remainingSegments.slice(match.consumedCount);
       const branch = [...parentRecords, record];
-
-      if (route.children.length) {
-        const child = matchRoutes(
+      const childResults = route.children.length
+        ? matchSlotRoutes(
           route.children,
           nextRemaining,
           branch,
           record.params,
-        );
-        if (child) {
-          return child;
-        }
+        )
+        : {};
+      const defaultChildBranch = childResults[DEFAULT_CHILD_SLOT];
+      const terminalMatch = nextRemaining.length === 0 ||
+        normalizedPath === "*";
+      const acceptedBranch = defaultChildBranch ??
+        (terminalMatch ? { records: branch, params: record.params } : null);
+
+      if (!acceptedBranch) {
+        continue;
       }
 
-      if (nextRemaining.length === 0 || normalizedPath === "*") {
-        return branch;
+      slotResults[slot] = acceptedBranch;
+      for (const [childSlot, childBranch] of Object.entries(childResults)) {
+        if (childSlot === DEFAULT_CHILD_SLOT || childSlot in slotResults) {
+          continue;
+        }
+
+        slotResults[childSlot] = childBranch;
       }
+      break;
     }
   }
 
-  return null;
+  return slotResults;
 }
 
 export class Router extends EventTarget {
@@ -1736,11 +1999,44 @@ export class Router extends EventTarget {
       return null;
     }
 
-    const branch =
-      matchRoutes(this.compiledRoutes, splitSegments(localPathname)) ??
-        [];
-    const leaf = branch.at(-1)?.route;
-    const params = branch.at(-1)?.params ?? {};
+    const matchedSlots = matchSlotRoutes(
+      this.compiledRoutes,
+      splitSegments(localPathname),
+    );
+    const mainMatch = matchedSlots[DEFAULT_CHILD_SLOT];
+    const branch = mainMatch ? branchRoutes(mainMatch) : [];
+    const leaf = branch.at(-1);
+    const params = mainMatch?.params ?? {};
+    const slotBranches: Record<string, RouteDefinition[]> = {};
+    const slotParams: Record<string, Record<string, string>> = {};
+    const slots: Record<string, RouterSlotDetail> = {};
+
+    if (mainMatch) {
+      slots[DEFAULT_CHILD_SLOT] = {
+        branch,
+        leaf,
+        params,
+      };
+
+      for (const [slotName, slotMatch] of Object.entries(matchedSlots)) {
+        if (slotName === DEFAULT_CHILD_SLOT) {
+          continue;
+        }
+
+        const slotBranch = branchRoutes(slotMatch);
+        if (
+          slotBranch.length < 2 ||
+          branch.length === 0 ||
+          slotBranch[0] !== branch[0]
+        ) {
+          continue;
+        }
+
+        slotBranches[slotName] = slotBranch;
+        slotParams[slotName] = slotMatch.params;
+        slots[slotName] = createSlotDetail(slotMatch);
+      }
+    }
 
     return {
       pathname,
@@ -1750,11 +2046,15 @@ export class Router extends EventTarget {
       query: new URLSearchParams(url.search),
       hash: url.hash,
       params,
-      branch: branch.map((record) => record.route),
+      branch,
       leaf,
+      slotBranches: Object.keys(slotBranches).length ? slotBranches : undefined,
+      slotParams: Object.keys(slotParams).length ? slotParams : undefined,
+      slots: Object.keys(slots).length ? slots : undefined,
       url,
       historyKey: this.getCurrentHistoryEntryKey(),
       direction: "none",
+      toJSON: detailToJSON,
     };
   }
 
@@ -2030,18 +2330,22 @@ export class Router extends EventTarget {
     direction: NavigationDirection,
     signal: AbortSignal,
   ): Promise<boolean> {
-    const shouldDispatchLoading = this.branchNeedsLoading(detail.branch);
+    const loadingSlots = this.loadingSlotsForDetail(detail);
+    const shouldDispatchLoading = loadingSlots.length > 0;
     if (shouldDispatchLoading) {
       this.dispatchRouteLoading(
         "route-loading-start",
         detail.url,
         detail.branch,
+        loadingSlots,
         direction,
       );
     }
 
     try {
-      await this.loadBranch(detail.branch, signal);
+      for (const branch of detailBranches(detail)) {
+        await this.loadBranch(branch, signal);
+      }
     } catch (error) {
       if (signal.aborted) {
         return false;
@@ -2054,6 +2358,7 @@ export class Router extends EventTarget {
           "route-loading-end",
           detail.url,
           detail.branch,
+          loadingSlots,
           direction,
         );
       }
@@ -2128,9 +2433,7 @@ export class Router extends EventTarget {
     const from = this.current.branch.length ? this.current : null;
 
     if (from) {
-      const leavingRoutes = from.branch.slice(
-        sharedBranchPrefixLength(from.branch, detail?.branch ?? []),
-      ).reverse();
+      const leavingRoutes = collectLeavingRoutes(from, detail);
 
       for (const route of leavingRoutes) {
         if (signal.aborted) {
@@ -2191,7 +2494,7 @@ export class Router extends EventTarget {
       }
     }
 
-    for (const route of detail.branch) {
+    for (const route of collectMatchedRoutes(detail)) {
       if (signal.aborted) {
         return { allowed: false };
       }
@@ -2230,6 +2533,25 @@ export class Router extends EventTarget {
           (!this.loadedRoutes.has(route) || this.pendingRouteLoads.has(route)),
       )
     );
+  }
+
+  private loadingSlotsForDetail(detail: RouterChangeDetail): string[] {
+    const loadingSlots: string[] = [];
+    if (this.branchNeedsLoading(detail.branch)) {
+      loadingSlots.push(DEFAULT_CHILD_SLOT);
+    }
+
+    for (
+      const [slotName, branch] of Object.entries(
+        detail.slotBranches ?? {},
+      ).sort(([left], [right]) => left.localeCompare(right))
+    ) {
+      if (this.branchNeedsLoading(branch)) {
+        loadingSlots.push(slotName);
+      }
+    }
+
+    return loadingSlots;
   }
 
   private async loadBranch(
@@ -2343,6 +2665,7 @@ export class Router extends EventTarget {
     type: "route-loading-start" | "route-loading-end",
     url: URL,
     branch: RouteDefinition[],
+    loadingSlots: string[],
     direction: NavigationDirection,
   ): void {
     this.activeRouteLoads = type === "route-loading-start"
@@ -2353,6 +2676,7 @@ export class Router extends EventTarget {
         detail: {
           url,
           branch: [...branch],
+          loadingSlots,
           pending: this.activeRouteLoads,
           direction,
         },

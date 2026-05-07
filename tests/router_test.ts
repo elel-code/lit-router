@@ -49,6 +49,54 @@ function ensureTestElements(): void {
     );
   }
 
+  if (!dom.customElements.get("test-route-slotted-layout")) {
+    dom.customElements.define(
+      "test-route-slotted-layout",
+      class TestSlottedLayoutElement extends dom.HTMLElement {
+        connectedCallback(): void {
+          if (this.shadowRoot) {
+            return;
+          }
+
+          const shadow = this.attachShadow({ mode: "open" });
+          const main = dom.document.createElement("main");
+          const mainSlot = dom.document.createElement("slot");
+          mainSlot.name = "route-child";
+          main.append(mainSlot);
+
+          const aside = dom.document.createElement("aside");
+          aside.textContent = "fallback sidebar";
+          const sidebarSlot = dom.document.createElement("slot");
+          sidebarSlot.name = "sidebar";
+          aside.append(sidebarSlot);
+          shadow.append(main, aside);
+        }
+      },
+    );
+  }
+
+  if (!dom.customElements.get("test-route-sidebar-layout")) {
+    dom.customElements.define(
+      "test-route-sidebar-layout",
+      class TestSidebarLayoutElement extends dom.HTMLElement {
+        connectedCallback(): void {
+          if (this.shadowRoot) {
+            return;
+          }
+
+          const shadow = this.attachShadow({ mode: "open" });
+          const defaultSlot = dom.document.createElement("slot");
+          defaultSlot.name = "route-child";
+
+          const toolsSlot = dom.document.createElement("slot");
+          toolsSlot.name = "sidebar-tools";
+
+          shadow.append(defaultSlot, toolsSlot);
+        }
+      },
+    );
+  }
+
   if (!dom.customElements.get("test-route-broken-layout")) {
     dom.customElements.define(
       "test-route-broken-layout",
@@ -714,6 +762,428 @@ Deno.test("router-view warns once when a parent route is missing the child slot"
     } finally {
       console.warn = originalWarn;
     }
+  });
+});
+
+Deno.test("router resolves parallel named slot branches for one URL", async () => {
+  await withRouters(async (createRouter) => {
+    const router = createRouter({
+      routes: [
+        {
+          path: "settings",
+          component: "test-route-slotted-layout",
+          children: [
+            { path: "profile", component: "test-route-page" },
+            {
+              path: "profile",
+              slot: "sidebar",
+              component: "test-route-alt",
+            },
+          ],
+        },
+      ],
+    });
+
+    await settle();
+    router.push("/settings/profile");
+    await settle();
+
+    assertEquals(router.current.branch.map((route) => route.component), [
+      "test-route-slotted-layout",
+      "test-route-page",
+    ]);
+    assertEquals(
+      router.current.slotBranches?.sidebar?.map((route) => route.component),
+      ["test-route-slotted-layout", "test-route-alt"],
+    );
+    assertEquals(
+      router.current.slots?.sidebar?.leaf?.component,
+      "test-route-alt",
+    );
+  });
+});
+
+Deno.test("router-view projects parallel route branches into named slots", async () => {
+  await withRouters(async (createRouter) => {
+    const router = createRouter({
+      routes: [
+        {
+          path: "settings",
+          component: "test-route-slotted-layout",
+          children: [
+            { path: "profile", component: "test-route-page" },
+            {
+              path: "profile",
+              slot: "sidebar",
+              component: "test-route-alt",
+            },
+            { path: "security", component: "test-route-security" },
+          ],
+        },
+      ],
+    });
+
+    const dom = browser();
+    const view = dom.document.createElement("router-view") as HTMLElement & {
+      router?: Router;
+      shadowRoot: ShadowRoot | null;
+      updateComplete?: Promise<unknown>;
+    };
+    view.router = router;
+    dom.document.body.append(view);
+
+    await settle(view);
+    router.push("/settings/profile");
+    await settle(view);
+
+    const layout = view.shadowRoot?.querySelector("test-route-slotted-layout");
+    const page = view.shadowRoot?.querySelector("test-route-page") as
+      | HTMLElement
+      | null;
+    const sidebar = view.shadowRoot?.querySelector("test-route-alt") as
+      | HTMLElement
+      | null;
+
+    assert(layout);
+    assert(page);
+    assert(sidebar);
+    assertEquals(page.slot, "route-child");
+    assertEquals(sidebar.slot, "sidebar");
+
+    router.push("/settings/security");
+    await settle(view);
+
+    assert(view.shadowRoot?.querySelector("test-route-security"));
+    assertEquals(view.shadowRoot?.querySelector("test-route-alt"), null);
+  });
+});
+
+Deno.test("slot route components receive slot-aware route context", async () => {
+  await withRouters(async (createRouter) => {
+    const router = createRouter({
+      routes: [
+        {
+          path: "settings",
+          component: "test-route-slotted-layout",
+          children: [
+            { path: "profile/:id", component: "test-route-page" },
+            {
+              path: "profile/:id",
+              slot: "sidebar",
+              component: "test-route-aware",
+            },
+          ],
+        },
+      ],
+    });
+
+    const dom = browser();
+    const view = dom.document.createElement("router-view") as HTMLElement & {
+      router?: Router;
+      shadowRoot: ShadowRoot | null;
+      updateComplete?: Promise<unknown>;
+    };
+    view.router = router;
+    dom.document.body.append(view);
+
+    await settle(view);
+    router.push("/settings/profile/42");
+    await settle(view);
+
+    const sidebar = view.shadowRoot?.querySelector("test-route-aware") as
+      | (HTMLElement & { routeContext?: RouteContext })
+      | null;
+
+    assert(sidebar);
+    assertEquals(sidebar.routeContext?.slot, "sidebar");
+    assertEquals(sidebar.routeContext?.params.id, "42");
+    assertEquals(
+      sidebar.routeContext?.branch.at(-1)?.component,
+      "test-route-aware",
+    );
+  });
+});
+
+Deno.test("guards and lazy loads include parallel slot routes", async () => {
+  await withRouters(async (createRouter) => {
+    let sidebarGuardCalls = 0;
+    let sidebarLoadCalls = 0;
+    const loadingEvents: RouteLoadingDetail[] = [];
+    const router = createRouter({
+      routes: [
+        {
+          path: "settings",
+          component: "test-route-slotted-layout",
+          children: [
+            { path: "profile", component: "test-route-page" },
+            {
+              path: "profile",
+              slot: "sidebar",
+              component: "test-route-alt",
+              guard: () => {
+                sidebarGuardCalls += 1;
+                return true;
+              },
+              load: () => {
+                sidebarLoadCalls += 1;
+                return Promise.resolve();
+              },
+            },
+          ],
+        },
+      ],
+    });
+    router.addEventListener("route-loading-start", (event) => {
+      loadingEvents.push((event as CustomEvent<RouteLoadingDetail>).detail);
+    });
+    router.addEventListener("route-loading-end", (event) => {
+      loadingEvents.push((event as CustomEvent<RouteLoadingDetail>).detail);
+    });
+
+    await settle();
+    router.push("/settings/profile");
+    await settle();
+
+    assertEquals(router.current.localPathname, "/settings/profile");
+    assertEquals(sidebarGuardCalls, 1);
+    assertEquals(sidebarLoadCalls, 1);
+    assertEquals(loadingEvents.map((event) => event.loadingSlots), [
+      ["sidebar"],
+      ["sidebar"],
+    ]);
+  });
+});
+
+Deno.test("router change details serialize URLSearchParams with toJSON", async () => {
+  await withRouters(async (createRouter) => {
+    const router = createRouter({
+      routes: [
+        { path: "", component: "test-route-page" },
+        { path: "settings/:section", component: "test-route-page" },
+      ],
+    });
+
+    await settle();
+    const detail = router.resolveUrl(
+      "/settings/profile?filter=new&filter=open&tab=profile#summary",
+    );
+    assert(detail);
+
+    const json = JSON.parse(JSON.stringify(detail)) as {
+      query: Record<string, string | string[]>;
+      url: string;
+      params: Record<string, string>;
+    };
+
+    assertEquals(json.query, {
+      filter: ["new", "open"],
+      tab: "profile",
+    });
+    assertEquals(json.params.section, "profile");
+    assertEquals(
+      json.url,
+      "http://localhost/settings/profile?filter=new&filter=open&tab=profile#summary",
+    );
+  });
+});
+
+Deno.test("router-view only moves focus between side slots when focus was inside the old side slot", async () => {
+  await withRouters(async (createRouter) => {
+    const dom = browser();
+    const makeSidebar = (label: string) => {
+      const section = dom.document.createElement("section");
+      const button = dom.document.createElement("button");
+      button.dataset.routeFocus = "";
+      button.textContent = label;
+      section.append(button);
+      return section;
+    };
+    const router = createRouter({
+      routes: [
+        {
+          path: "settings",
+          component: "test-route-slotted-layout",
+          children: [
+            { path: ":section", component: "test-route-page" },
+            {
+              path: "profile",
+              slot: "sidebar",
+              component: () => makeSidebar("profile side"),
+            },
+            {
+              path: "security",
+              slot: "sidebar",
+              component: () => makeSidebar("security side"),
+            },
+          ],
+        },
+      ],
+    });
+
+    const view = dom.document.createElement("router-view") as HTMLElement & {
+      router?: Router;
+      shadowRoot: ShadowRoot | null;
+      updateComplete?: Promise<unknown>;
+    };
+    view.router = router;
+    dom.document.body.append(view);
+
+    await settle(view);
+    router.push("/settings/profile");
+    await settle(view);
+
+    const profileSideFocus = view.shadowRoot?.querySelector(
+      "section[slot='sidebar'] button",
+    ) as HTMLButtonElement | null;
+    assert(profileSideFocus);
+    view.focus();
+    assert(dom.document.activeElement === view);
+
+    router.push("/settings/security");
+    await settle(view);
+
+    const securitySideFocus = view.shadowRoot?.querySelector(
+      "section[slot='sidebar'] button",
+    ) as HTMLButtonElement | null;
+    assert(securitySideFocus);
+    assert(dom.document.activeElement === view);
+    assert(view.shadowRoot?.activeElement !== securitySideFocus);
+
+    securitySideFocus.focus();
+    assert(view.shadowRoot?.activeElement === securitySideFocus);
+
+    router.push("/settings/profile");
+    await settle(view);
+
+    const nextProfileSideFocus = view.shadowRoot?.querySelector(
+      "section[slot='sidebar'] button",
+    ) as HTMLButtonElement | null;
+    assert(nextProfileSideFocus);
+    assert(view.shadowRoot?.activeElement === nextProfileSideFocus);
+  });
+});
+
+Deno.test("beforeLeave runs for leaving slot branches before the main branch", async () => {
+  await withRouters(async (createRouter) => {
+    const calls: string[] = [];
+    const router = createRouter({
+      routes: [
+        {
+          path: "settings",
+          component: "test-route-slotted-layout",
+          children: [
+            {
+              path: "profile",
+              component: "test-route-page",
+              beforeLeave: () => {
+                calls.push("main");
+                return true;
+              },
+            },
+            {
+              path: "profile",
+              slot: "sidebar",
+              component: "test-route-alt",
+              beforeLeave: () => {
+                calls.push("sidebar");
+                return true;
+              },
+            },
+            { path: "security", component: "test-route-security" },
+          ],
+        },
+      ],
+    });
+
+    await settle();
+    router.push("/settings/profile");
+    await settle();
+    router.push("/settings/security");
+    await settle();
+
+    assertEquals(calls, ["sidebar", "main"]);
+    assertEquals(router.current.localPathname, "/settings/security");
+  });
+});
+
+Deno.test("slot route branches support nested recursive projection through side slots", async () => {
+  await withRouters(async (createRouter) => {
+    const router = createRouter({
+      routes: [
+        {
+          path: "settings",
+          component: "test-route-slotted-layout",
+          children: [
+            { path: "profile", component: "test-route-page" },
+            {
+              path: "profile",
+              slot: "sidebar",
+              component: "test-route-sidebar-layout",
+              children: [
+                { path: "", component: "test-route-drafts" },
+                {
+                  path: "",
+                  slot: "sidebar-tools",
+                  component: "test-route-security",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const dom = browser();
+    const view = dom.document.createElement("router-view") as HTMLElement & {
+      router?: Router;
+      shadowRoot: ShadowRoot | null;
+      updateComplete?: Promise<unknown>;
+    };
+    view.router = router;
+    dom.document.body.append(view);
+
+    await settle(view);
+    router.push("/settings/profile");
+    await settle(view);
+
+    const sidebarLayout = view.shadowRoot?.querySelector(
+      "test-route-sidebar-layout",
+    );
+    const sidebarHome = view.shadowRoot?.querySelector("test-route-drafts") as
+      | HTMLElement
+      | null;
+    const sidebarTools = view.shadowRoot?.querySelector(
+      "test-route-security",
+    ) as
+      | HTMLElement
+      | null;
+
+    assert(sidebarLayout);
+    assert(sidebarHome);
+    assert(sidebarTools);
+    assertEquals(sidebarLayout.slot, "sidebar");
+    assertEquals(sidebarHome.slot, "route-child");
+    assertEquals(sidebarTools.slot, "sidebar-tools");
+  });
+});
+
+Deno.test("router rejects reserved route slot names", async () => {
+  await withRouters((createRouter) => {
+    let thrown: unknown;
+
+    try {
+      createRouter({
+        routes: [
+          { path: "", component: "test-route-page" },
+          { path: "missing", slot: "404", component: "test-route-alt" },
+        ],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    assert(thrown instanceof Error);
+    assertEquals(thrown.message.includes('Route slot "404" is reserved'), true);
   });
 });
 
@@ -2392,7 +2862,7 @@ Deno.test("router-view cancels pending commits and clears retained refs when dis
 
     const internals = view as unknown as {
       pendingChildOutletChecks: Map<HTMLElement, unknown>;
-      renderedElements: HTMLElement[];
+      renderedBranches: Map<string, HTMLElement[]>;
     };
     internals.pendingChildOutletChecks.set(
       dom.document.createElement("section"),
@@ -2404,7 +2874,7 @@ Deno.test("router-view cancels pending commits and clears retained refs when dis
     await settle();
 
     assertEquals(view.current.localPathname, "/");
-    assertEquals(internals.renderedElements.length, 0);
+    assertEquals(internals.renderedBranches.size, 0);
     assertEquals(internals.pendingChildOutletChecks.size, 0);
   });
 });

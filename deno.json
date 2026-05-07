@@ -1,7 +1,7 @@
 {
   "$schema": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
   "name": "@elelcode/lit-router",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "license": "MIT",
   "exports": {
     ".": "./src/router.ts"
@@ -48,6 +48,7 @@
     "build": "deno task fmt:check && deno task lint && deno task check && deno task test",
     "build:package": "deno check --sloppy-imports src/router.ts src/router-core.ts src/router-view.ts src/browser-env.ts src/scroll-manager.ts",
     "build:demo": "deno check --sloppy-imports src/app-root.ts src/demo-pages.ts src/my-element.ts examples/minimal/main.ts",
-    "test": "deno test --sloppy-imports -A tests"
+    "test": "deno test --sloppy-imports -A tests",
+    "test:e2e": "deno test -A tests/e2e/e2e_test.ts"
   }
 }

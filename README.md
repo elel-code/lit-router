@@ -97,6 +97,8 @@ Supported fields:
 - `name`: optional stable route name used by `router.link()` and named
   navigation.
 - `path`: route path segment. Use `""` for index routes and `"*"` for catch-all.
+- `slot`: parent slot name used by this route. Defaults to `"route-child"`;
+  `"404"` and `"error"` are reserved fallback slot names.
 - `title`: optional document title template. `:param` placeholders are expanded.
 - `viewTransitionName`: optional CSS `view-transition-name` used by
   `<router-view>` for this route when it is the leaf route.
@@ -205,6 +207,9 @@ setRouteContext(context: RouteContext): void
 Components must expose either `routeContext` or `setRouteContext()`. The router
 no longer injects legacy `routeDetail` / `routeParams` fields.
 
+`routeContext.slot` identifies the slot this component was projected into, and
+`routeContext.branch` contains the branch for that slot.
+
 ## Nested Routes
 
 If a route declares `children`, the parent component must provide a slot for the
@@ -215,6 +220,21 @@ child branch:
 ```
 
 Or set a custom slot name on `<router-view child-slot="content">`.
+
+Sibling child routes can target additional parent slots with `slot`:
+
+```ts
+{
+  path: "settings",
+  component: "settings-layout",
+  children: [
+    { path: "profile", component: "settings-profile" },
+    { path: "profile", slot: "sidebar", component: "profile-sidebar" },
+  ],
+}
+```
+
+`RouterChangeDetail.slotBranches` exposes matched non-main slot branches.
 
 ## Navigation
 
