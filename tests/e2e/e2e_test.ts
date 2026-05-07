@@ -58,18 +58,55 @@ async function prepareBrowser(port: number) {
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
   const page = await browser.newPage();
+  const diagnostics: string[] = [];
+  page.on("pageerror", (error) => {
+    diagnostics.push(
+      `pageerror: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error" || message.type() === "warn") {
+      diagnostics.push(`console.${message.type()}: ${message.text()}`);
+    }
+  });
   await page.goto(`http://localhost:${port}/`, { waitUntil: "networkidle0" });
-  await waitForRouterReady(page);
+  await waitForRouterReady(page, diagnostics);
   return { browser, page };
 }
 
-async function waitForRouterReady(page: Page) {
-  await page.waitForFunction(() => {
-    const view = document.querySelector("router-view") as
-      | (HTMLElement & { router?: unknown })
-      | null;
-    return Boolean(customElements.get("router-view") && view?.router);
-  }, { timeout: 5_000 });
+async function waitForRouterReady(page: Page, diagnostics: string[] = []) {
+  try {
+    await page.waitForFunction(() => {
+      const view = document.querySelector("router-view") as
+        | (HTMLElement & { router?: unknown })
+        | null;
+      return Boolean(customElements.get("router-view") && view?.router);
+    }, { timeout: 5_000 });
+  } catch (error) {
+    const state = await page.evaluate(() => {
+      const scripts = Array.from(document.scripts).map((script) =>
+        script.src || script.textContent?.slice(0, 120) || ""
+      );
+      return {
+        hasRouterView: Boolean(document.querySelector("router-view")),
+        routerViewDefined: Boolean(customElements.get("router-view")),
+        body: document.body.innerHTML.slice(0, 400),
+        scripts,
+      };
+    }).catch((stateError) => ({
+      evaluationError: stateError instanceof Error
+        ? stateError.message
+        : String(stateError),
+    }));
+
+    throw new Error(
+      `router-view did not become ready.\nState: ${
+        JSON.stringify(state)
+      }\nDiagnostics: ${diagnostics.join(" | ")}\nCause: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 async function waitForPath(
