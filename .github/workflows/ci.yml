@@ -42,8 +42,13 @@ jobs:
         with:
           deno-version: v2.x
 
+      - name: Install JSR npm package
+        run: |
+          npm config set @jsr:registry https://npm.jsr.io
+          npm install --no-save --no-package-lock @jsr/elelcode__lit-router
+
       - name: Build E2E bundle
-        run: deno run -A scripts/build-e2e.ts
+        run: E2E_ROUTER_ENTRY=@jsr/elelcode__lit-router deno run -A scripts/build-e2e.ts
 
       - name: Install Chromium
         run: sudo apt-get update -qq && sudo apt-get install -y -qq chromium-browser

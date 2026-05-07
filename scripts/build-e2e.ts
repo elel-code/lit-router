@@ -1,7 +1,18 @@
 import * as esbuild from "npm:esbuild@0.25.8";
 
+const routerEntry = Deno.env.get("E2E_ROUTER_ENTRY")?.trim();
+
 const result = await esbuild.build({
-  entryPoints: ["src/router.ts"],
+  ...(routerEntry
+    ? {
+      stdin: {
+        contents: `export * from ${JSON.stringify(routerEntry)};`,
+        loader: "ts",
+        resolveDir: Deno.cwd(),
+        sourcefile: "e2e-router-entry.ts",
+      },
+    }
+    : { entryPoints: ["src/router.ts"] }),
   bundle: true,
   format: "esm",
   outfile: "dist-e2e/router.bundle.js",
