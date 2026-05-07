@@ -127,8 +127,12 @@ async function waitForText(
   expected: string,
 ) {
   await page.waitForFunction(
-    (s: string, value: string) =>
-      document.querySelector(s)?.textContent === value,
+    (s: string, value: string) => {
+      const view = document.querySelector("router-view");
+      const element = view?.shadowRoot?.querySelector(s) ??
+        document.querySelector(s);
+      return element?.textContent === value;
+    },
     { timeout: 5_000 },
     sel,
     expected,
@@ -164,7 +168,12 @@ function text(
   sel: string,
 ) {
   return page.evaluate(
-    (s: string) => document.querySelector(s)?.textContent ?? "",
+    (s: string) => {
+      const view = document.querySelector("router-view");
+      const element = view?.shadowRoot?.querySelector(s) ??
+        document.querySelector(s);
+      return element?.textContent ?? "";
+    },
     sel,
   );
 }
@@ -389,7 +398,8 @@ Deno.test({
 
       await nav(page, "/settings/profile");
       await page.waitForFunction(() => {
-        const layout = document.querySelector("x-layout");
+        const layout = document.querySelector("router-view")?.shadowRoot
+          ?.querySelector("x-layout");
         if (!layout?.shadowRoot) return false;
         const slot = layout.shadowRoot.querySelector(
           'slot[name="sidebar"]',
@@ -397,7 +407,8 @@ Deno.test({
         return slot?.assignedElements()?.[0]?.textContent === "SidebarContent";
       }, { timeout: 5_000 });
       const sidebarText = await page.evaluate(() => {
-        const layout = document.querySelector("x-layout");
+        const layout = document.querySelector("router-view")?.shadowRoot
+          ?.querySelector("x-layout");
         if (!layout?.shadowRoot) return "no-shadow";
         const slot = layout.shadowRoot.querySelector(
           'slot[name="sidebar"]',
