@@ -1,0 +1,53 @@
+{
+  "$schema": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
+  "name": "@elelcode/lit-router",
+  "version": "1.0.0",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/router.ts"
+  },
+  "publish": {
+    "exclude": [
+      ".codex",
+      ".github/",
+      "dist/",
+      "examples/",
+      "lib/",
+      "node_modules/",
+      "public/",
+      "src/app-root.ts",
+      "src/demo-pages.ts",
+      "src/index.css",
+      "src/lazy-drafts-panel.ts",
+      "src/my-element.ts",
+      "src/assets/",
+      "tests/",
+      "index.html",
+      "TODO.md"
+    ]
+  },
+  "lock": true,
+  "compilerOptions": {
+    "lib": [
+      "deno.ns",
+      "dom",
+      "esnext"
+    ],
+    "noImplicitOverride": false
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1.0.15",
+    "happy-dom": "npm:happy-dom@^20.9.0",
+    "lit": "npm:lit@^3.3.2"
+  },
+  "tasks": {
+    "fmt": "deno fmt deno.json README.md docs src/router.ts src/router-core.ts src/router-view.ts src/browser-env.ts src/scroll-manager.ts tests .github/workflows/ci.yml",
+    "fmt:check": "deno fmt --check deno.json README.md docs src/router.ts src/router-core.ts src/router-view.ts src/browser-env.ts src/scroll-manager.ts tests .github/workflows/ci.yml",
+    "lint": "deno lint src tests examples",
+    "check": "deno check --sloppy-imports src/router.ts src/router-core.ts src/router-view.ts src/browser-env.ts src/scroll-manager.ts src/app-root.ts src/demo-pages.ts src/my-element.ts examples/minimal/main.ts tests/router_test.ts",
+    "build": "deno task fmt:check && deno task lint && deno task check && deno task test",
+    "build:package": "deno check --sloppy-imports src/router.ts src/router-core.ts src/router-view.ts src/browser-env.ts src/scroll-manager.ts",
+    "build:demo": "deno check --sloppy-imports src/app-root.ts src/demo-pages.ts src/my-element.ts examples/minimal/main.ts",
+    "test": "deno test --sloppy-imports -A tests"
+  }
+}
