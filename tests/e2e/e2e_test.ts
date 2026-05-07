@@ -18,12 +18,13 @@ function startServer(root: string) {
     { port: 0, signal: controller.signal },
     async (request: Request) => {
       const url = new URL(request.url);
-      const filePath = `${root}${url.pathname}`;
+      const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
+      const filePath = `${root}${pathname}`;
 
       try {
         const text = await Deno.readTextFile(filePath);
 
-        const ext = url.pathname.split(".").pop() ?? "";
+        const ext = pathname.split(".").pop() ?? "";
         const contentType = {
           js: "application/javascript",
           html: "text/html",

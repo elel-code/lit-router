@@ -42,15 +42,33 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Install E2E npm packages
-        run: |
-          npm config set @jsr:registry https://npm.jsr.io
-          npm install --no-save --no-package-lock @jsr/elelcode__lit-router esbuild@0.25.8
-
       - name: Build E2E bundle
         run: |
-          mkdir -p dist-e2e
-          ./node_modules/.bin/esbuild @jsr/elelcode__lit-router --bundle --format=esm --platform=browser --target=es2018 --outfile=dist-e2e/router.bundle.js
+          deno cache npm:@jsr/elelcode__lit-router@1.0.2
+          mkdir -p .tmp-e2e dist-e2e
+          deno eval '
+            await Deno.writeTextFile(
+              ".tmp-e2e/entry.js",
+              "export * from \"@jsr/elelcode__lit-router\";\n",
+            );
+            await Deno.writeTextFile(
+              ".tmp-e2e/vite.config.mjs",
+              `export default {
+                build: {
+                  target: "es2018",
+                  emptyOutDir: true,
+                  outDir: "dist-e2e",
+                  lib: {
+                    entry: ".tmp-e2e/entry.js",
+                    formats: ["es"],
+                    fileName: () => "router.bundle.js",
+                  },
+                },
+              };\n`,
+            );
+          '
+          deno run -A npm:vite@^8.0.5 build . --config .tmp-e2e/vite.config.mjs --configLoader native
+          rm -rf .tmp-e2e
 
       - name: Install Chromium
         run: sudo apt-get update -qq && sudo apt-get install -y -qq chromium-browser
