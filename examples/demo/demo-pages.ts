@@ -1,6 +1,6 @@
 import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import type { RouteContext, RouterChangeDetail } from "./router.ts";
+import type { RouteContext, RouterChangeDetail } from "../../src/router.ts";
 
 class RouteAwareElement extends LitElement {
   @property({ attribute: false })

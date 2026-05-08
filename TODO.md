@@ -57,8 +57,14 @@
 
 ## Polishing (低优先级完善)
 
-- [x] **`mountBranch` 签名 `_previousDetail` 已移除** — 参数已从签名和所有调用点删除。
-- [x] **`dispatchRouteLoading` 中 `loadingSlots` 双重克隆已合并** — 移除内层 `[...loadingSlots]`，调用方已提供新数组。
-- [x] **`detailSlotBranches` 已内联** — 合并到 `detailBranches`，消除单次 spread 临时对象。
-- [x] **侧 slot 嵌套 children 专项测试已添加** — 通过 `test-route-sidebar-layout` 验证 sidebar → sidebar-tools 递归投影链。
-- [x] **API 文档已补充** — `docs/api.md` / `docs/api.zh-CN.md` 已包含 `slot`、`slotBranches`、`slotParams`、`slots`、`RouteContext.slot/branch`、`RouterSlotDetail`、`RouterChangeDetailJson`、`loadingSlots` 等全部新类型。
+- [x] **`mountBranch` 签名 `_previousDetail` 已移除** —
+      参数已从签名和所有调用点删除。
+- [x] **`dispatchRouteLoading` 中 `loadingSlots` 双重克隆已合并** — 移除内层
+      `[...loadingSlots]`，调用方已提供新数组。
+- [x] **`detailSlotBranches` 已内联** — 合并到 `detailBranches`，消除单次 spread
+      临时对象。
+- [x] **侧 slot 嵌套 children 专项测试已添加** — 通过
+      `test-route-sidebar-layout` 验证 sidebar → sidebar-tools 递归投影链。
+- [x] **API 文档已补充** — `docs/api.md` / `docs/api.zh-CN.md` 已包含
+      `slot`、`slotBranches`、`slotParams`、`slots`、`RouteContext.slot/branch`、`RouterSlotDetail`、`RouterChangeDetailJson`、`loadingSlots`
+      等全部新类型。

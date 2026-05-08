@@ -6,9 +6,11 @@ capabilities such as `URLPattern`, the `Navigation API`, and the
 
 Docs:
 
+- English guide: [docs/guide.md](./docs/guide.md)
 - Chinese guide: [docs/guide.zh-CN.md](./docs/guide.zh-CN.md)
 - English API reference: [docs/api.md](./docs/api.md)
 - 中文 API 参考: [docs/api.zh-CN.md](./docs/api.zh-CN.md)
+- Changelog: [CHANGELOG.md](./CHANGELOG.md)
 
 ## Highlights
 
@@ -39,10 +41,13 @@ deno task test
 
 ## Docs
 
-- Overview and quick start: [README.md](./README.md)
-- English API reference: [docs/api.md](./docs/api.md)
-- 中文指南: [docs/guide.zh-CN.md](./docs/guide.zh-CN.md)
-- 中文 API 参考: [docs/api.zh-CN.md](./docs/api.zh-CN.md)
+- Overview and quick start: this page
+- [English guide](./docs/guide.md)
+- [中文指南](./docs/guide.zh-CN.md)
+- [English API reference](./docs/api.md)
+- [中文 API 参考](./docs/api.zh-CN.md)
+- [Slot outlets design](./docs/slot-outlets-design.md)
+- [Changelog](./CHANGELOG.md)
 
 ## Quick Start
 
@@ -344,11 +349,11 @@ Available events:
   finished. `event.detail.pending` is the current in-flight loading count.
 - `route-not-found`: no matching route for the current URL.
 
-## Example
+## Examples
 
-This repository includes a runnable playground at `examples/minimal/`.
+### `examples/minimal/` — Feature Playground
 
-It demonstrates:
+A compact playground covering the full feature set.
 
 - index routes
 - nested slot-based rendering
@@ -364,6 +369,21 @@ Key files:
 - [examples/minimal/main.ts](./examples/minimal/main.ts)
 - [examples/minimal/example-pages.ts](./examples/minimal/example-pages.ts)
 - [examples/minimal/lazy-drafts.ts](./examples/minimal/lazy-drafts.ts)
+
+### `examples/demo/` — Interactive Demo
+
+A full interactive demo with navigation bar, status panel, guarded lab route,
+and dynamic module loading. Run it with:
+
+```bash
+deno serve --port 8000 index.html
+```
+
+Key files:
+
+- [examples/demo/app-root.ts](./examples/demo/app-root.ts)
+- [examples/demo/demo-pages.ts](./examples/demo/demo-pages.ts)
+- [examples/demo/lazy-drafts-panel.ts](./examples/demo/lazy-drafts-panel.ts)
 
 ## Production Notes
 

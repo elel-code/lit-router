@@ -20,8 +20,11 @@
 
 相关文档：
 
+- 英文指南：[guide.md](./guide.md)
 - 英文 API 参考：[api.md](./api.md)
 - 中文 API 参考：[api.zh-CN.md](./api.zh-CN.md)
+- Slot 多出口设计：[slot-outlets-design.md](./slot-outlets-design.md)
+- 变更日志：[CHANGELOG.md](../CHANGELOG.md)
 - 完整示例：[examples/minimal/main.ts](../examples/minimal/main.ts)
 
 ## 安装
@@ -80,6 +83,21 @@ document.querySelector("router-view")!.router = router;
 - [examples/minimal/main.ts](../examples/minimal/main.ts)
 - [examples/minimal/example-pages.ts](../examples/minimal/example-pages.ts)
 - [examples/minimal/lazy-drafts.ts](../examples/minimal/lazy-drafts.ts)
+
+### `examples/demo/` — 交互式 Demo
+
+一个带有导航栏、状态面板、守卫 Lab 路由和动态模块加载的完整交互式 Demo。
+在项目根目录运行：
+
+```bash
+deno serve --port 8000 index.html
+```
+
+关键文件：
+
+- [examples/demo/app-root.ts](../examples/demo/app-root.ts)
+- [examples/demo/demo-pages.ts](../examples/demo/demo-pages.ts)
+- [examples/demo/lazy-drafts-panel.ts](../examples/demo/lazy-drafts-panel.ts)
 
 ## 核心概念
 
@@ -429,3 +447,11 @@ router.addEventListener("route-error", (event) => {
 - history entry 方向缓存和 `router-view` 滚动缓存都是有界的
 - `load()` 的 Promise 返回值不会注入组件上下文，它只承担代码分割或副作用职责
 - 这套核心不覆盖 SSR，也不内建激活链接之类的壳层能力
+
+## 进一步阅读
+
+- [英文指南](./guide.md) — English user guide
+- [英文 API 参考](./api.md) — 完整类型签名与方法文档
+- [中文 API 参考](./api.zh-CN.md) — Chinese API reference
+- [Slot 多出口设计](./slot-outlets-design.md) — 并行命名 outlet 架构设计
+- [变更日志](../CHANGELOG.md) — 版本历史

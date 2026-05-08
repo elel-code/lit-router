@@ -27,4 +27,5 @@ dist-ssr
 # Project-specific
 chat_export_*.md
 .codex
-dist-e2e
+dist-e2e/
+lib/

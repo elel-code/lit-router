@@ -2,8 +2,6 @@
   "$schema": "https://www.schemastore.org/tsconfig.json",
   "compilerOptions": {
     "target": "esnext",
-    "experimentalDecorators": true,
-    "useDefineForClassFields": false,
     "module": "esnext",
     "lib": ["esnext", "DOM"],
     "types": ["vite/client"],
@@ -11,9 +9,9 @@
       {
         "name": "ts-lit-plugin",
         "rules": {
-          "no-invalid-css": "off", // 关闭无效 CSS 检查
-        },
-      },
+          "no-invalid-css": "off" // 关闭无效 CSS 检查
+        }
+      }
     ],
     "skipLibCheck": true,
 
@@ -28,7 +26,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true,
+    "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
+  "include": ["src"]
 }

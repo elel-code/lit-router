@@ -1,12 +1,12 @@
 import { css, html, LitElement } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import "./demo-pages.ts";
-import "./router.ts";
+import "../../src/router.ts";
 import {
   type RouteDefinition,
   Router,
   type RouterChangeDetail,
-} from "./router.ts";
+} from "../../src/router.ts";
 
 @customElement("app-root")
 export class AppRoot extends LitElement {

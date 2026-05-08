@@ -15,12 +15,6 @@
       "lib/",
       "node_modules/",
       "public/",
-      "src/app-root.ts",
-      "src/demo-pages.ts",
-      "src/index.css",
-      "src/lazy-drafts-panel.ts",
-      "src/my-element.ts",
-      "src/assets/",
       "tests/",
       "tests/e2e/",
       "index.html",
@@ -44,13 +38,13 @@
     "puppeteer": "npm:puppeteer@^24.15.0"
   },
   "tasks": {
-    "fmt": "deno fmt deno.json README.md docs src/router.ts src/router-core.ts src/router-view.ts src/browser-env.ts src/scroll-manager.ts tests .github/workflows/ci.yml",
-    "fmt:check": "deno fmt --check deno.json README.md docs src/router.ts src/router-core.ts src/router-view.ts src/browser-env.ts src/scroll-manager.ts tests .github/workflows/ci.yml",
+    "fmt": "deno fmt",
+    "fmt:check": "deno fmt --check",
     "lint": "deno lint src tests examples",
-    "check": "deno check --sloppy-imports src/router.ts src/router-core.ts src/router-view.ts src/browser-env.ts src/scroll-manager.ts src/app-root.ts src/demo-pages.ts src/my-element.ts examples/minimal/main.ts tests/router_test.ts",
+    "check": "deno check --sloppy-imports src/router.ts src/router-core.ts src/router-view.ts src/browser-env.ts src/scroll-manager.ts examples/demo/app-root.ts examples/demo/demo-pages.ts examples/minimal/main.ts tests/router_test.ts",
     "build": "deno task fmt:check && deno task lint && deno task check && deno task test",
     "build:package": "deno check --sloppy-imports src/router.ts src/router-core.ts src/router-view.ts src/browser-env.ts src/scroll-manager.ts",
-    "build:demo": "deno check --sloppy-imports src/app-root.ts src/demo-pages.ts src/my-element.ts examples/minimal/main.ts",
+    "build:demo": "deno check --sloppy-imports examples/demo/app-root.ts examples/demo/demo-pages.ts examples/minimal/main.ts",
     "test": "deno test --sloppy-imports -A tests/router_test.ts tests/test_setup.ts",
     "test:e2e": "deno test -A tests/e2e/e2e_test.ts"
   }
