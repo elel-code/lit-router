@@ -264,6 +264,29 @@ const namedMatch = router.resolveNamed("user-detail", {
 });
 ```
 
+Use hash routing when the deployment host cannot rewrite all application URLs to
+the app shell:
+
+```ts
+const router = new Router({
+  mode: "hash",
+  basePath: "/app",
+  routes,
+});
+
+router.link({ name: "user-detail", params: { id: "123" } });
+// "/#/app/users/123"
+```
+
+In hash mode, route matching, guards, query parsing, and `RouteContext` use the
+path inside `#`. `basePath` stays part of the route path, so switching between
+history and hash modes moves `/app/users/123` between the browser pathname and
+the hash payload without changing the route tree.
+
+When a WebView starts at an entry document such as `/index.html`, hash mode
+normalizes the first URL with `replaceState`, for example `/index.html#/app`,
+and keeps later links on the same document path.
+
 Named reverse routing supports literal segments, `:param`, `:param(<pattern>)`,
 `*`, and optional `?` tokens such as `:lang?/docs`. Route tokens with `+` or `*`
 modifiers are still rejected during `router.link()` generation.
@@ -271,6 +294,8 @@ modifiers are still rejected during `router.link()` generation.
 Anchor navigation:
 
 - Same-origin links inside the configured `basePath` are intercepted.
+- In hash mode, router links use `#/path` and plain fragments such as `#section`
+  are left to the browser.
 - Same-origin links outside `basePath` fall back to the browser.
 - Both HTML and SVG `<a>` elements are supported.
 - Add `data-router-replace` to an anchor to use replace-style navigation.

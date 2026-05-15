@@ -243,6 +243,21 @@ const href = router.link({
 
 如果链接不属于当前 `basePath`，会自动回退到浏览器原生跳转。
 
+### Hash 模式
+
+如果静态托管环境无法把所有路由 URL rewrite 到应用入口，可以使用 `mode: "hash"`：
+
+```ts
+const router = new Router({
+  mode: "hash",
+  basePath: "/app",
+  routes,
+});
+```
+
+生成的链接形如 `/#/app/settings/profile`。路由会匹配 `#` 内的 path、query 和
+fragment，其中包含配置的 `basePath`。
+
 如果要走 replace 语义：
 
 ```html

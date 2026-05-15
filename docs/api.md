@@ -43,6 +43,7 @@ import {
   type RouterEventMap,
   type RouterLinkAttributes,
   type RouterLinkOptions,
+  type RouterMode,
   type RouterSlotDetail,
   type RouterSlotDetailJson,
   RouterView,
@@ -72,12 +73,15 @@ Constructor options:
 
 - `routes?: RouteDefinition[]`
 - `basePath?: string`
+- `mode?: "history" | "hash"`
 - `beforeRoute?: RouteGuard`
 - `autoStart?: boolean`
 
 Notes:
 
 - `basePath` defaults to `"/"`.
+- `mode` defaults to `"history"`. In `"hash"` mode, route paths live after `#`
+  (for example `/#/app/settings`) so static hosts do not need rewrite rules.
 - Only one started `Router` instance is supported per document.
 - Use `configure()` to update router options after construction.
 
@@ -102,6 +106,19 @@ Returns a mutable cloned snapshot of the current route tree.
 
 Current base path. Prefer `configure({ basePath })` when changing it at runtime
 so the router refreshes immediately.
+
+In hash mode, `basePath` remains part of the application route path, but that
+path is read from the hash payload. For example, `basePath: "/app"` matches
+`/#/app/settings` instead of `/app/settings`.
+
+#### `router.mode: RouterMode`
+
+Current routing mode. `"history"` uses the browser pathname. `"hash"` uses
+`#/path?query#fragment`, so the same `basePath` and route tree can move between
+history URLs such as `/app/settings` and hash URLs such as `/#/app/settings`. If
+the initial document URL has no route hash, hash mode normalizes it with
+`replaceState`; `/index.html` with `basePath: "/app"` becomes
+`/index.html#/app`.
 
 #### `router.beforeRoute?: RouteGuard`
 
@@ -147,6 +164,7 @@ Supported fields:
 
 - `routes`
 - `basePath`
+- `mode`
 - `beforeRoute`
 
 #### `router.setRoutes(routes): void`
@@ -243,7 +261,9 @@ Accepted inputs are the same as `push()`.
 #### `router.resolveUrl(url): RouterChangeDetail | null`
 
 Resolves a string or `URL` without navigating. Returns `null` when the URL is
-outside `basePath` or no route branch matches.
+outside `basePath` or no route branch matches. Hash mode accepts both route URLs
+such as `/app/settings/profile` and browser URLs such as
+`/#/app/settings/profile`.
 
 ```ts
 const match = router.resolveUrl("/settings/profile");
@@ -276,6 +296,8 @@ const href = router.link({
 Notes:
 
 - Requires a route `name`.
+- In hash mode, returns an href with the route encoded after `#`, for example
+  `/#/app/messages/42?tab=activity#summary`.
 - Supports literal segments, `:param`, `:param(<pattern>)`, `*`, and optional
   `?` tokens such as `:lang?/docs`.
 - Rejects `+` and `*` parameter modifiers during reverse routing.

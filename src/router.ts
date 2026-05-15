@@ -28,6 +28,7 @@ export {
   type RouterEventMap,
   type RouterLinkAttributes,
   type RouterLinkOptions,
+  type RouterMode,
   type RouterSlotDetail,
   type RouterSlotDetailJson,
   type RouteSelector,

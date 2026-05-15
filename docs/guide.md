@@ -248,6 +248,22 @@ The router intercepts same-origin `<a>` clicks inside the configured `basePath`:
 
 Links outside `basePath` fall back to native browser navigation.
 
+### Hash Mode
+
+Use `mode: "hash"` when your static host cannot rewrite every route URL to the
+app shell:
+
+```ts
+const router = new Router({
+  mode: "hash",
+  basePath: "/app",
+  routes,
+});
+```
+
+Generated links look like `/#/app/settings/profile`. The router matches the
+path, query, and fragment inside `#`, including the configured `basePath`.
+
 For replace-style navigation:
 
 ```html

@@ -1359,6 +1359,251 @@ Deno.test("router builds links from named routes and route params", async () => 
   });
 });
 
+Deno.test("hash mode builds links and navigates without changing document path", async () => {
+  await withRouters(async (createRouter) => {
+    const dom = browser();
+    dom.history.replaceState(null, "", "/#/app");
+
+    const router = createRouter({
+      mode: "hash",
+      basePath: "/app",
+      routes: [
+        { path: "", name: "home", component: "test-route-page" },
+        { path: "users/:id", name: "user", component: "test-route-aware" },
+      ],
+    });
+
+    await settle();
+
+    assertEquals(
+      router.link({
+        name: "user",
+        params: { id: 123 },
+        query: { tab: "profile" },
+        hash: "summary",
+      }),
+      "/#/app/users/123?tab=profile#summary",
+    );
+    assertEquals(router.link({ name: "home" }), "/#/app");
+
+    router.push({
+      name: "user",
+      params: { id: "456" },
+      query: { tab: "activity" },
+    });
+    await settle();
+
+    assertEquals(dom.location.pathname, "/");
+    assertEquals(dom.location.hash, "#/app/users/456?tab=activity");
+    assertEquals(router.current.pathname, "/app/users/456");
+    assertEquals(router.current.localPathname, "/users/456");
+    assertEquals(router.current.params.id, "456");
+    assertEquals(router.current.query.get("tab"), "activity");
+
+    router.replace("/app/users/789#details");
+    await settle();
+
+    assertEquals(dom.location.pathname, "/");
+    assertEquals(dom.location.hash, "#/app/users/789#details");
+    assertEquals(router.current.localPathname, "/users/789");
+    assertEquals(router.current.hash, "#details");
+  });
+});
+
+Deno.test("hash mode resolves hash URLs and route URLs without navigating", async () => {
+  await withRouters(async (createRouter) => {
+    const dom = browser();
+    dom.history.replaceState(null, "", "/#/app");
+
+    const router = createRouter({
+      mode: "hash",
+      basePath: "/app",
+      routes: [
+        { path: "", name: "home", component: "test-route-page" },
+        { path: "users/:id", name: "user", component: "test-route-aware" },
+      ],
+    });
+
+    await settle();
+
+    const hashUrl = router.resolveUrl("/#/app/users/42?tab=profile#summary");
+    assert(hashUrl);
+    assertEquals(hashUrl.localPathname, "/users/42");
+    assertEquals(hashUrl.params.id, "42");
+    assertEquals(hashUrl.query.get("tab"), "profile");
+    assertEquals(hashUrl.hash, "#summary");
+
+    const routeUrl = router.resolveUrl("/app/users/99?tab=activity");
+    assert(routeUrl);
+    assertEquals(routeUrl.localPathname, "/users/99");
+    assertEquals(routeUrl.query.get("tab"), "activity");
+    assertEquals(router.resolveUrl("/#/app")?.localPathname, "/");
+    assertEquals(router.resolveUrl("/#/app/missing"), null);
+    assertEquals(router.current.localPathname, "/");
+  });
+});
+
+Deno.test("hash mode canonicalizes an initial index document URL to the base route", async () => {
+  await withRouters(async (createRouter) => {
+    const dom = browser();
+    dom.history.replaceState(null, "", "/index.html");
+
+    const router = createRouter({
+      mode: "hash",
+      basePath: "/app",
+      routes: [
+        { path: "", name: "home", component: "test-route-page" },
+        { path: "settings", name: "settings", component: "test-route-page" },
+      ],
+    });
+
+    await settle();
+
+    assertEquals(dom.location.pathname, "/index.html");
+    assertEquals(dom.location.hash, "#/app");
+    assertEquals(router.current.pathname, "/app");
+    assertEquals(router.current.localPathname, "/");
+    assertEquals(
+      router.link({ name: "settings" }),
+      "/index.html#/app/settings",
+    );
+  });
+});
+
+Deno.test("hash mode intercepts hash route links but leaves plain fragments alone", async () => {
+  await withRouters(async (createRouter) => {
+    const router = createRouter({
+      mode: "hash",
+      routes: [
+        { path: "", component: "test-route-page" },
+        { path: "next", component: "test-route-page" },
+      ],
+    });
+
+    await settle();
+
+    const dom = browser();
+    const plainFragment = dom.document.createElement("a");
+    plainFragment.href = "http://localhost/#section";
+    dom.document.body.append(plainFragment);
+
+    const plainClick = new dom.MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    });
+    plainFragment.dispatchEvent(plainClick);
+    await settle();
+
+    assertEquals(plainClick.defaultPrevented, false);
+    assertEquals(router.current.localPathname, "/");
+
+    const rootLink = dom.document.createElement("a");
+    rootLink.href = "http://localhost/#";
+    dom.document.body.append(rootLink);
+
+    const rootClick = new dom.MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    });
+    rootLink.dispatchEvent(rootClick);
+    await settle();
+
+    assertEquals(rootClick.defaultPrevented, true);
+    assertEquals(router.current.localPathname, "/");
+    assertEquals(dom.location.href, "http://localhost/#");
+
+    const routeLink = dom.document.createElement("a");
+    routeLink.href = "http://localhost/#/next";
+    dom.document.body.append(routeLink);
+
+    const routeClick = new dom.MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    });
+    routeLink.dispatchEvent(routeClick);
+    await settle();
+
+    assertEquals(routeClick.defaultPrevented, true);
+    assertEquals(router.current.localPathname, "/next");
+    assertEquals(dom.location.hash, "#/next");
+  });
+});
+
+Deno.test("hash mode ignores route links outside basePath", async () => {
+  await withRouters(async (createRouter) => {
+    const dom = browser();
+    dom.history.replaceState(null, "", "/#/app");
+    const routeNotFoundEvents: Event[] = [];
+    const router = createRouter({
+      mode: "hash",
+      basePath: "/app",
+      routes: [
+        { path: "", component: "test-route-page" },
+        { path: "next", component: "test-route-page" },
+      ],
+    });
+
+    router.addEventListener("route-not-found", (event) => {
+      routeNotFoundEvents.push(event);
+    });
+
+    await settle();
+
+    const anchor = dom.document.createElement("a");
+    anchor.href = "http://localhost/#/outside";
+    dom.document.body.append(anchor);
+
+    const clickEvent = new dom.MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    });
+    const dispatchResult = anchor.dispatchEvent(clickEvent);
+    await settle();
+
+    assertEquals(dispatchResult, true);
+    assertEquals(clickEvent.defaultPrevented, false);
+    assertEquals(routeNotFoundEvents.length, 0);
+    assertEquals(router.current.localPathname, "/");
+  });
+});
+
+Deno.test("hash mode guard relative redirects resolve from the hash route", async () => {
+  await withRouters(async (createRouter) => {
+    const router = createRouter({
+      mode: "hash",
+      routes: [
+        { path: "", component: "test-route-page" },
+        {
+          path: "settings",
+          component: "test-route-layout",
+          children: [
+            {
+              path: "profile",
+              component: "test-route-page",
+              guard: () => "./security",
+            },
+            {
+              path: "security",
+              component: "test-route-security",
+            },
+          ],
+        },
+      ],
+    });
+
+    await settle();
+    router.push("#/settings/profile");
+    await settle();
+
+    assertEquals(router.current.localPathname, "/settings/security");
+    assertEquals(browser().location.hash, "#/settings/security");
+  });
+});
+
 Deno.test("router resolves URLs and named routes without navigating", async () => {
   await withRouters(async (createRouter) => {
     const typedEvents: string[] = [];
@@ -2322,6 +2567,124 @@ Deno.test("router prefers Navigation API listeners over popstate when available"
       assertEquals(popstateRemoves, 0);
       assertEquals(navigateAdds, 1);
       assertEquals(navigateRemoves, 1);
+    } finally {
+      Object.defineProperty(windowTarget, "navigation", {
+        configurable: true,
+        value: originalNavigation,
+      });
+      Object.defineProperty(windowTarget, "addEventListener", {
+        configurable: true,
+        value: originalAddEventListener,
+      });
+      Object.defineProperty(windowTarget, "removeEventListener", {
+        configurable: true,
+        value: originalRemoveEventListener,
+      });
+    }
+  });
+});
+
+Deno.test("hash mode uses Navigation API listeners when available", async () => {
+  await withRouters(async (createRouter) => {
+    const dom = browser();
+    dom.history.replaceState(null, "", "/#/app");
+    const windowTarget = dom.window as Window & {
+      navigation?: EventTarget & {
+        navigate?: (
+          url: string,
+          options?: { history?: "push" | "replace" },
+        ) => unknown;
+      };
+    };
+    const originalNavigation = windowTarget.navigation;
+    const originalAddEventListener = windowTarget.addEventListener;
+    const originalRemoveEventListener = windowTarget.removeEventListener;
+    const navigationApi = new EventTarget() as EventTarget & {
+      navigate: (
+        url: string,
+        options?: { history?: "push" | "replace" },
+      ) => unknown;
+    };
+
+    let popstateAdds = 0;
+    let hashchangeAdds = 0;
+    let navigateAdds = 0;
+    const navigations: Array<{
+      url: string;
+      history?: "push" | "replace";
+    }> = [];
+
+    navigationApi.navigate = (url, options) => {
+      navigations.push({ url, history: options?.history });
+    };
+
+    Object.defineProperty(windowTarget, "navigation", {
+      configurable: true,
+      value: navigationApi,
+    });
+    Object.defineProperty(windowTarget, "addEventListener", {
+      configurable: true,
+      value: function (
+        this: Window,
+        type: string,
+        listener: EventListenerOrEventListenerObject | null,
+        options?: AddEventListenerOptions | boolean,
+      ): void {
+        if (type === "popstate") {
+          popstateAdds += 1;
+        }
+        if (type === "hashchange") {
+          hashchangeAdds += 1;
+        }
+        if (!listener) {
+          return;
+        }
+        return originalAddEventListener.call(this, type, listener, options);
+      },
+    });
+
+    const originalNavigationAddEventListener = navigationApi.addEventListener;
+    Object.defineProperty(navigationApi, "addEventListener", {
+      configurable: true,
+      value: function (
+        this: EventTarget,
+        type: string,
+        listener: EventListenerOrEventListenerObject | null,
+        options?: AddEventListenerOptions | boolean,
+      ): void {
+        if (type === "navigate") {
+          navigateAdds += 1;
+        }
+        return originalNavigationAddEventListener.call(
+          this,
+          type,
+          listener,
+          options,
+        );
+      },
+    });
+
+    try {
+      const router = createRouter({
+        autoStart: false,
+        mode: "hash",
+        basePath: "/app",
+        routes: [
+          { path: "", name: "home", component: "test-route-page" },
+          { path: "next", name: "next", component: "test-route-page" },
+        ],
+      });
+
+      router.start();
+      await settle();
+      router.push({ name: "next" });
+      await settle();
+      router.stop();
+
+      assertEquals(popstateAdds, 0);
+      assertEquals(hashchangeAdds, 0);
+      assertEquals(navigateAdds, 1);
+      assertEquals(navigations, [{ url: "/#/app/next", history: "push" }]);
     } finally {
       Object.defineProperty(windowTarget, "navigation", {
         configurable: true,

@@ -1,6 +1,7 @@
 import { browserDocument, browserWindow } from "./browser-env.ts";
 
 type HistoryMode = "push" | "replace";
+export type RouterMode = "history" | "hash";
 type MaybePromise<T> = T | Promise<T>;
 export type NavigationDirection = "forward" | "backward" | "none";
 
@@ -255,6 +256,7 @@ export interface RouteLoadingDetail {
 export interface RouterOptions {
   routes?: RouteDefinition[];
   basePath?: string;
+  mode?: RouterMode;
   beforeRoute?: RouteGuard;
   autoStart?: boolean;
 }
@@ -338,6 +340,10 @@ function normalizePathname(pathname: string): string {
 
 function normalizeBasePath(basePath: string): string {
   return normalizePathname(basePath || ROOT_PATH);
+}
+
+function normalizeRouterMode(mode: RouterMode | undefined): RouterMode {
+  return mode === "hash" ? "hash" : "history";
 }
 
 function stripBasePath(pathname: string, basePath: string): string | null {
@@ -1236,6 +1242,53 @@ function normalizeHash(hash?: string): string {
   return hash.startsWith("#") ? hash : `#${hash}`;
 }
 
+function isRouteHash(hash: string): boolean {
+  if (!hash || hash === "#") {
+    return false;
+  }
+
+  const value = hash.slice(1);
+  return value.startsWith("/") || value.startsWith("!/") ||
+    value.startsWith("?");
+}
+
+function hasEmptyHashMarker(href: string): boolean {
+  return href.endsWith("#");
+}
+
+function hashRouteToUrl(hash: string, origin: string): URL {
+  if (!hash || hash === "#") {
+    return new URL(ROOT_PATH, origin);
+  }
+
+  let value = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (value.startsWith("!")) {
+    value = value.slice(1);
+  }
+
+  if (!value) {
+    return new URL(ROOT_PATH, origin);
+  }
+
+  if (value.startsWith("?")) {
+    return new URL(`${ROOT_PATH}${value}`, origin);
+  }
+
+  if (!value.startsWith(ROOT_PATH)) {
+    return new URL(`${ROOT_PATH}#${value}`, origin);
+  }
+
+  return new URL(value, origin);
+}
+
+function hashRouteHref(url: URL): string {
+  if (url.pathname === ROOT_PATH && !url.search && !url.hash) {
+    return "#";
+  }
+
+  return `#${url.pathname}${url.search}${url.hash}`;
+}
+
 function matchSlotRoutes(
   routes: CompiledRouteDefinition[],
   remainingSegments: string[],
@@ -1313,6 +1366,7 @@ export class Router extends EventTarget {
 
   private routeTree: RouteDefinition[] = [];
   basePath: string;
+  mode: RouterMode;
   beforeRoute?: RouteGuard;
 
   current: RouterChangeDetail = {
@@ -1412,7 +1466,22 @@ export class Router extends EventTarget {
       return;
     }
 
-    void this.routeTo(new URL(browserWindow().location.href), {
+    void this.routeTo(this.currentBrowserRouteUrl(), {
+      history: "none",
+    });
+  };
+
+  private readonly onHashChange = () => {
+    if (this.mode !== "hash") {
+      return;
+    }
+
+    const browserUrl = new URL(browserWindow().location.href);
+    if (!this.managesUrl(browserUrl)) {
+      return;
+    }
+
+    void this.routeTo(this.browserUrlToRouteUrl(browserUrl), {
       history: "none",
     });
   };
@@ -1445,7 +1514,7 @@ export class Router extends EventTarget {
     }
 
     const href = this.getAnchorHref(anchor);
-    if (!href || href.startsWith("#")) {
+    if (!href || (this.mode === "history" && href.startsWith("#"))) {
       return;
     }
 
@@ -1459,13 +1528,20 @@ export class Router extends EventTarget {
       return;
     }
 
+    if (this.mode === "hash" && url.hash && !isRouteHash(url.hash)) {
+      return;
+    }
+
     const shouldReplace = anchor.hasAttribute("data-router-replace");
-    if (this.navigationApi && !shouldReplace) {
+    if (this.usesNavigationApi && !shouldReplace) {
       return;
     }
 
     event.preventDefault();
-    this.navigate(url, shouldReplace ? "replace" : "push");
+    this.navigate(
+      this.mode === "hash" ? this.browserUrlToRouteUrl(url) : url,
+      shouldReplace ? "replace" : "push",
+    );
   };
 
   private readonly onNavigate = (event: Event) => {
@@ -1484,14 +1560,22 @@ export class Router extends EventTarget {
       return;
     }
 
+    if (this.mode === "hash" && nextUrl.hash && !isRouteHash(nextUrl.hash)) {
+      return;
+    }
+
     if (!this.managesUrl(nextUrl)) {
       return;
     }
 
+    const routeUrl = this.mode === "hash"
+      ? this.browserUrlToRouteUrl(nextUrl)
+      : nextUrl;
+
     navigateEvent.intercept({
       scroll: "manual",
       handler: async () => {
-        await this.routeTo(nextUrl, {
+        await this.routeTo(routeUrl, {
           history: "none",
           historyKey: navigateEvent.destination.key,
         });
@@ -1503,7 +1587,13 @@ export class Router extends EventTarget {
     super();
     this.routeTree = cloneRouteDefinitions(options.routes ?? []);
     this.basePath = normalizeBasePath(options.basePath ?? ROOT_PATH);
+    this.mode = normalizeRouterMode(options.mode);
     this.beforeRoute = options.beforeRoute;
+    this.current = {
+      ...this.current,
+      basePath: this.basePath,
+      url: this.currentBrowserRouteUrl(),
+    };
     this.rebuildRouteState();
 
     if (options.autoStart !== false) {
@@ -1543,12 +1633,8 @@ export class Router extends EventTarget {
     this.started = true;
     Router.activeRouter = this;
     browserDocument().addEventListener("click", this.onDocumentClick);
-    if (this.navigationApi) {
-      this.navigationApi.addEventListener("navigate", this.onNavigate);
-    } else {
-      browserWindow().addEventListener("popstate", this.onPopState);
-    }
-    void this.routeTo(new URL(browserWindow().location.href), {
+    this.attachBrowserNavigationListeners();
+    void this.routeTo(this.initialBrowserRouteUrl(), {
       history: "none",
       skipIfSame: false,
     });
@@ -1567,16 +1653,19 @@ export class Router extends EventTarget {
       Router.activeRouter = undefined;
     }
     browserDocument().removeEventListener("click", this.onDocumentClick);
-    if (this.navigationApi) {
-      this.navigationApi.removeEventListener("navigate", this.onNavigate);
-    } else {
-      browserWindow().removeEventListener("popstate", this.onPopState);
-    }
+    this.detachBrowserNavigationListeners(this.usesNavigationApi);
   }
 
   configure(
-    options: Pick<RouterOptions, "routes" | "basePath" | "beforeRoute">,
+    options: Pick<
+      RouterOptions,
+      "routes" | "basePath" | "mode" | "beforeRoute"
+    >,
   ): void {
+    const wasStarted = this.started;
+    const previousUsesNavigationApi = this.usesNavigationApi;
+    const previousMode = this.mode;
+
     if ("routes" in options) {
       this.routeTree = cloneRouteDefinitions(options.routes ?? []);
       this.rebuildRouteState();
@@ -1587,8 +1676,21 @@ export class Router extends EventTarget {
       this.basePath = normalizeBasePath(options.basePath);
     }
 
+    if (options.mode !== undefined) {
+      this.mode = normalizeRouterMode(options.mode);
+    }
+
     if ("beforeRoute" in options) {
       this.beforeRoute = options.beforeRoute;
+    }
+
+    if (
+      wasStarted &&
+      (previousUsesNavigationApi !== this.usesNavigationApi ||
+        previousMode !== this.mode)
+    ) {
+      this.detachBrowserNavigationListeners(previousUsesNavigationApi);
+      this.attachBrowserNavigationListeners();
     }
 
     this.requestRouteRefresh(false);
@@ -1722,9 +1824,7 @@ export class Router extends EventTarget {
   }
 
   resolveUrl(target: string | URL): RouterChangeDetail | null {
-    const url = target instanceof URL
-      ? new URL(target.href)
-      : new URL(target, browserWindow().location.href);
+    const url = this.toRouteUrl(target);
     return this.resolveMatched(url);
   }
 
@@ -1732,12 +1832,12 @@ export class Router extends EventTarget {
     name: string,
     options: RouteResolveOptions = {},
   ): RouterChangeDetail | null {
-    return this.resolveMatched(this.toUrl({ name, ...options }));
+    return this.resolveMatched(this.toRouteUrl({ name, ...options }));
   }
 
   link(location: RouteLocation): string {
-    const url = this.toUrl(location);
-    return `${url.pathname}${url.search}${url.hash}`;
+    const url = this.toRouteUrl(location);
+    return this.routeUrlToHref(url);
   }
 
   linkAttributes(
@@ -1779,6 +1879,32 @@ export class Router extends EventTarget {
         navigation?: NavigationApiLike;
       }
     ).navigation;
+  }
+
+  private get usesNavigationApi(): boolean {
+    return Boolean(this.navigationApi);
+  }
+
+  private attachBrowserNavigationListeners(): void {
+    if (this.usesNavigationApi) {
+      this.navigationApi?.addEventListener("navigate", this.onNavigate);
+      return;
+    }
+
+    browserWindow().addEventListener("popstate", this.onPopState);
+    if (this.mode === "hash") {
+      browserWindow().addEventListener("hashchange", this.onHashChange);
+    }
+  }
+
+  private detachBrowserNavigationListeners(usedNavigationApi: boolean): void {
+    if (usedNavigationApi) {
+      this.navigationApi?.removeEventListener("navigate", this.onNavigate);
+      return;
+    }
+
+    browserWindow().removeEventListener("popstate", this.onPopState);
+    browserWindow().removeEventListener("hashchange", this.onHashChange);
   }
 
   private isNavigableAnchor(item: unknown): item is Element {
@@ -1908,24 +2034,37 @@ export class Router extends EventTarget {
     target: string | URL | RouteLocation,
     mode: HistoryMode,
   ): void {
-    const url = this.toUrl(target);
-    const href = `${url.pathname}${url.search}${url.hash}`;
+    const url = this.toRouteUrl(target);
+    const href = this.routeUrlToHref(url);
 
-    if (this.navigationApi) {
-      this.navigationApi.navigate(href, { history: mode });
+    const navigationApi = this.navigationApi;
+    if (this.usesNavigationApi && navigationApi?.navigate) {
+      navigationApi.navigate(href, { history: mode });
       return;
     }
 
     void this.routeTo(url, { history: mode });
   }
 
-  private toUrl(target: string | URL | RouteLocation): URL {
+  private toRouteUrl(target: string | URL | RouteLocation): URL {
     if (target instanceof URL) {
-      return target;
+      return this.mode === "hash" &&
+          (isRouteHash(target.hash) || hasEmptyHashMarker(target.href))
+        ? this.browserUrlToRouteUrl(target)
+        : new URL(target.href);
     }
 
     if (typeof target === "string") {
-      return new URL(target, browserWindow().location.href);
+      const browser = browserWindow();
+      const externalUrl = new URL(target, browser.location.href);
+      if (
+        this.mode === "hash" &&
+        (isRouteHash(externalUrl.hash) || hasEmptyHashMarker(externalUrl.href))
+      ) {
+        return this.browserUrlToRouteUrl(externalUrl);
+      }
+
+      return new URL(target, this.current.url.href);
     }
 
     const branch = this.resolveNamedRouteBranch(target.name);
@@ -1989,6 +2128,57 @@ export class Router extends EventTarget {
     return localPathname === ROOT_PATH
       ? this.basePath
       : `${this.basePath}${localPathname}`;
+  }
+
+  private currentBrowserRouteUrl(): URL {
+    return this.browserUrlToRouteUrl(new URL(browserWindow().location.href));
+  }
+
+  private initialBrowserRouteUrl(): URL {
+    if (this.mode === "history") {
+      return this.currentBrowserRouteUrl();
+    }
+
+    const browser = browserWindow();
+    const browserUrl = new URL(browser.location.href);
+    if (isRouteHash(browserUrl.hash)) {
+      return this.browserUrlToRouteUrl(browserUrl);
+    }
+
+    if (browserUrl.hash && !hasEmptyHashMarker(browserUrl.href)) {
+      return this.browserUrlToRouteUrl(browserUrl);
+    }
+
+    const routeUrl = new URL(this.basePath, browser.location.origin);
+    browser.history.replaceState(
+      browser.history.state,
+      "",
+      this.routeUrlToHref(routeUrl),
+    );
+    return routeUrl;
+  }
+
+  private browserUrlToRouteUrl(url: URL): URL {
+    if (this.mode === "history") {
+      return new URL(url.href);
+    }
+
+    return hashRouteToUrl(url.hash, url.origin);
+  }
+
+  private hashDocumentPathname(): string {
+    return normalizePathname(browserWindow().location.pathname);
+  }
+
+  private routeUrlToHref(url: URL): string {
+    if (this.mode === "history") {
+      return `${url.pathname}${url.search}${url.hash}`;
+    }
+
+    const browser = browserWindow();
+    return `${this.hashDocumentPathname()}${browser.location.search}${
+      hashRouteHref(url)
+    }`;
   }
 
   private resolve(url: URL): RouterChangeDetail | null {
@@ -2059,6 +2249,21 @@ export class Router extends EventTarget {
   }
 
   private managesUrl(url: URL): boolean {
+    if (this.mode === "hash") {
+      if (stripBasePath(url.pathname, this.hashDocumentPathname()) === null) {
+        return false;
+      }
+
+      if (isRouteHash(url.hash) || hasEmptyHashMarker(url.href)) {
+        return stripBasePath(
+          this.browserUrlToRouteUrl(url).pathname,
+          this.basePath,
+        ) !== null;
+      }
+
+      return true;
+    }
+
     return stripBasePath(url.pathname, this.basePath) !== null;
   }
 
@@ -2142,7 +2347,7 @@ export class Router extends EventTarget {
       return;
     }
 
-    const currentUrl = new URL(browserWindow().location.href);
+    const currentUrl = this.currentBrowserRouteUrl();
     if (skipIfSame) {
       const nextDetail = this.resolve(currentUrl);
       if (
@@ -2402,7 +2607,7 @@ export class Router extends EventTarget {
       browserWindow().history.replaceState(
         withHistoryEntryKey(browserWindow().history.state, nextKey),
         "",
-        `${url.pathname}${url.search}${url.hash}`,
+        this.routeUrlToHref(url),
       );
       return nextKey;
     }
@@ -2413,7 +2618,7 @@ export class Router extends EventTarget {
       browserWindow().history.pushState(
         withHistoryEntryKey(null, nextKey),
         "",
-        `${url.pathname}${url.search}${url.hash}`,
+        this.routeUrlToHref(url),
       );
       return nextKey;
     }
@@ -2608,7 +2813,7 @@ export class Router extends EventTarget {
     if (
       direction === "none" ||
       !this.current.branch.length ||
-      attemptedUrl.href !== browserWindow().location.href ||
+      attemptedUrl.href !== this.currentBrowserRouteUrl().href ||
       attemptedUrl.href === this.current.url.href
     ) {
       return;
@@ -2642,19 +2847,19 @@ export class Router extends EventTarget {
         this.current.historyKey,
       ),
       "",
-      `${this.current.url.pathname}${this.current.url.search}${this.current.url.hash}`,
+      this.routeUrlToHref(this.current.url),
     );
   }
 
   private restoreCancelledNavigationWithNavigationApi(): boolean {
-    if (!this.navigationApi) {
+    const navigationApi = this.navigationApi;
+    if (!navigationApi?.navigate) {
       return false;
     }
 
-    const href =
-      `${this.current.url.pathname}${this.current.url.search}${this.current.url.hash}`;
+    const href = this.routeUrlToHref(this.current.url);
     try {
-      this.navigationApi.navigate(href, { history: "replace" });
+      navigationApi.navigate(href, { history: "replace" });
       return true;
     } catch {
       return false;

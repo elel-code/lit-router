@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0 (2026-05-16)
+
+### Added
+
+- Hash routing via `new Router({ mode: "hash" })`, including generated
+  `/#/base/path` links, hash URL resolution, click interception, guard
+  redirects, and `popstate` / `hashchange` navigation handling.
+
 ## 1.0.3 (2026-05-08)
 
 ### Added

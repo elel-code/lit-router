@@ -43,6 +43,7 @@ import {
   type RouterEventMap,
   type RouterLinkAttributes,
   type RouterLinkOptions,
+  type RouterMode,
   type RouterSlotDetail,
   type RouterSlotDetailJson,
   RouterView,
@@ -71,12 +72,15 @@ const router = new Router({
 
 - `routes?: RouteDefinition[]`
 - `basePath?: string`
+- `mode?: "history" | "hash"`
 - `beforeRoute?: RouteGuard`
 - `autoStart?: boolean`
 
 说明：
 
 - `basePath` 默认是 `"/"`
+- `mode` 默认是 `"history"`。`"hash"` 模式会把路由路径放在 `#` 后面，例如
+  `/#/app/settings`，静态托管不需要配置 rewrite 规则
 - 同一个 document 内只允许同时启动一个 `Router`
 - 运行时更新配置建议统一走 `configure()`
 
@@ -100,6 +104,18 @@ const router = new Router({
 
 当前 `basePath`。如果要在运行时修改，建议使用
 `configure({ basePath })`，这样会立即刷新当前 URL。
+
+在 hash 模式下，`basePath` 仍然是应用路由路径的一部分，只是这个路径会从 hash
+载荷里读取。例如 `basePath: "/app"` 会匹配 `/#/app/settings`，而不是
+`/app/settings`。
+
+#### `router.mode: RouterMode`
+
+当前路由模式。`"history"` 使用浏览器 pathname；`"hash"` 使用
+`#/path?query#fragment`。同一套 `basePath` 和路由树可以在 history URL
+`/app/settings` 与 hash URL `/#/app/settings` 之间切换。如果初始 document URL
+没有路由 hash，hash 模式会用 `replaceState` 做规范化；例如 `/index.html` 配合
+`basePath: "/app"` 会变成 `/index.html#/app`。
 
 #### `router.beforeRoute?: RouteGuard`
 
@@ -144,6 +160,7 @@ router.configure({
 
 - `routes`
 - `basePath`
+- `mode`
 - `beforeRoute`
 
 #### `router.setRoutes(routes): void`
@@ -239,7 +256,9 @@ router.batchRouteUpdates(() => {
 #### `router.resolveUrl(url): RouterChangeDetail | null`
 
 在不导航的情况下解析字符串或 `URL`。当 URL 不在 `basePath`
-内，或没有命中任何路由分支时返回 `null`。
+内，或没有命中任何路由分支时返回 `null`。hash 模式同时接受
+`/app/settings/profile` 这样的路由 URL，以及 `/#/app/settings/profile`
+这样的浏览器 URL。
 
 ```ts
 const match = router.resolveUrl("/settings/profile");
@@ -272,6 +291,8 @@ const href = router.link({
 说明：
 
 - 依赖路由 `name`
+- hash 模式会返回把路由编码到 `#` 后的 href，例如
+  `/#/app/messages/42?tab=activity#summary`
 - 支持字面量片段、`:param`、`:param(<pattern>)`、`*`，以及 `:lang?/docs`
   这类可选 `?` 片段
 - 路径里如果出现 `+` 或 `*` 参数修饰符，反向生成时会直接抛错

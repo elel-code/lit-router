@@ -29,3 +29,4 @@ chat_export_*.md
 .codex
 dist-e2e/
 lib/
+.deepseek

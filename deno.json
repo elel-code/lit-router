@@ -1,7 +1,7 @@
 {
   "$schema": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
   "name": "@elelcode/lit-router",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "license": "MIT",
   "exports": {
     ".": "./src/router.ts"
@@ -9,6 +9,7 @@
   "publish": {
     "exclude": [
       ".codex",
+      ".deepseek/",
       ".github/",
       "dist/",
       "examples/",
