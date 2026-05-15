@@ -82,6 +82,9 @@ Notes:
 - `basePath` defaults to `"/"`.
 - `mode` defaults to `"history"`. In `"hash"` mode, route paths live after `#`
   (for example `/#/app/settings`) so static hosts do not need rewrite rules.
+- Hash mode keeps using the Navigation API when `window.navigation` is
+  available. Without it, the router falls back to `popstate` and listens to
+  `hashchange` for direct hash edits.
 - Only one started `Router` instance is supported per document.
 - Use `configure()` to update router options after construction.
 
@@ -119,6 +122,16 @@ history URLs such as `/app/settings` and hash URLs such as `/#/app/settings`. If
 the initial document URL has no route hash, hash mode normalizes it with
 `replaceState`; `/index.html` with `basePath: "/app"` becomes
 `/index.html#/app`.
+
+Common URL shapes:
+
+| Configuration                      | History URL     | Hash URL                    |
+| ---------------------------------- | --------------- | --------------------------- |
+| `basePath: "/"` root               | `/`             | `/#`                        |
+| `basePath: "/"` route              | `/settings`     | `/#/settings`               |
+| `basePath: "/app"` root            | `/app`          | `/#/app`                    |
+| `basePath: "/app"` route           | `/app/settings` | `/#/app/settings`           |
+| WebView entry + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
 
 #### `router.beforeRoute?: RouteGuard`
 
@@ -298,6 +311,8 @@ Notes:
 - Requires a route `name`.
 - In hash mode, returns an href with the route encoded after `#`, for example
   `/#/app/messages/42?tab=activity#summary`.
+- A root route in hash mode emits `#` when `basePath` is `"/"`, and `#/app` when
+  `basePath` is `"/app"`.
 - Supports literal segments, `:param`, `:param(<pattern>)`, `*`, and optional
   `?` tokens such as `:lang?/docs`.
 - Rejects `+` and `*` parameter modifiers during reverse routing.
@@ -314,6 +329,10 @@ const attrs = router.linkAttributes(
 );
 // { href: "/messages/42", "data-router-replace": "" }
 ```
+
+In hash mode, plain fragments such as `#section` are left to the browser.
+Route-looking hashes outside `basePath`, such as `/#/outside` when
+`basePath: "/app"`, are also not intercepted.
 
 ### Events
 

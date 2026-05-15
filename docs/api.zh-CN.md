@@ -81,6 +81,8 @@ const router = new Router({
 - `basePath` 默认是 `"/"`
 - `mode` 默认是 `"history"`。`"hash"` 模式会把路由路径放在 `#` 后面，例如
   `/#/app/settings`，静态托管不需要配置 rewrite 规则
+- hash 模式在存在 `window.navigation` 时仍然会使用 Navigation API；否则回退到
+  `popstate`，并用 `hashchange` 覆盖直接修改 hash 的场景
 - 同一个 document 内只允许同时启动一个 `Router`
 - 运行时更新配置建议统一走 `configure()`
 
@@ -116,6 +118,16 @@ const router = new Router({
 `/app/settings` 与 hash URL `/#/app/settings` 之间切换。如果初始 document URL
 没有路由 hash，hash 模式会用 `replaceState` 做规范化；例如 `/index.html` 配合
 `basePath: "/app"` 会变成 `/index.html#/app`。
+
+常见 URL 形态：
+
+| 配置                              | History URL     | Hash URL                    |
+| --------------------------------- | --------------- | --------------------------- |
+| `basePath: "/"` 根路由            | `/`             | `/#`                        |
+| `basePath: "/"` 子路由            | `/settings`     | `/#/settings`               |
+| `basePath: "/app"` 根路由         | `/app`          | `/#/app`                    |
+| `basePath: "/app"` 子路由         | `/app/settings` | `/#/app/settings`           |
+| WebView 入口 + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
 
 #### `router.beforeRoute?: RouteGuard`
 
@@ -293,6 +305,8 @@ const href = router.link({
 - 依赖路由 `name`
 - hash 模式会返回把路由编码到 `#` 后的 href，例如
   `/#/app/messages/42?tab=activity#summary`
+- hash 模式的根路由在 `basePath: "/"` 时生成 `#`，在 `basePath: "/app"` 时生成
+  `#/app`
 - 支持字面量片段、`:param`、`:param(<pattern>)`、`*`，以及 `:lang?/docs`
   这类可选 `?` 片段
 - 路径里如果出现 `+` 或 `*` 参数修饰符，反向生成时会直接抛错
@@ -308,6 +322,9 @@ const attrs = router.linkAttributes(
 );
 // { href: "/messages/42", "data-router-replace": "" }
 ```
+
+hash 模式不会接管 `#section` 这类普通文档片段。当 `basePath: "/app"` 时，
+`/#/outside` 这类不在 `basePath` 内的 hash 路由也会交还给浏览器。
 
 ### 事件
 

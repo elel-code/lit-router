@@ -258,6 +258,24 @@ const router = new Router({
 生成的链接形如 `/#/app/settings/profile`。路由会匹配 `#` 内的 path、query 和
 fragment，其中包含配置的 `basePath`。
 
+常见 URL 形态：
+
+| 配置                              | History URL     | Hash URL                    |
+| --------------------------------- | --------------- | --------------------------- |
+| `basePath: "/"` 根路由            | `/`             | `/#`                        |
+| `basePath: "/"` 子路由            | `/settings`     | `/#/settings`               |
+| `basePath: "/app"` 根路由         | `/app`          | `/#/app`                    |
+| `basePath: "/app"` 子路由         | `/app/settings` | `/#/app/settings`           |
+| WebView 入口 + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
+
+对 Wails、Tauri 和其他 WebView 壳来说，从 `/index.html` 启动没有问题。hash
+模式会用 `replaceState` 把首次 URL 规范化，例如 `/index.html#/app`，之后生成的
+链接继续保留 `/index.html`，只改变 hash。
+
+当 WebView 暴露 `window.navigation` 时，hash 模式仍然会使用 Navigation API。
+`#section` 这类普通文档片段，以及不在当前 `basePath` 内的 hash 路径，不会被路由
+接管。
+
 如果要走 replace 语义：
 
 ```html

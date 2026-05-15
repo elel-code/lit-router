@@ -264,6 +264,25 @@ const router = new Router({
 Generated links look like `/#/app/settings/profile`. The router matches the
 path, query, and fragment inside `#`, including the configured `basePath`.
 
+Common URL shapes:
+
+| Configuration                      | History URL     | Hash URL                    |
+| ---------------------------------- | --------------- | --------------------------- |
+| `basePath: "/"` root               | `/`             | `/#`                        |
+| `basePath: "/"` route              | `/settings`     | `/#/settings`               |
+| `basePath: "/app"` root            | `/app`          | `/#/app`                    |
+| `basePath: "/app"` route           | `/app/settings` | `/#/app/settings`           |
+| WebView entry + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
+
+For Wails, Tauri, and other WebView shells, starting from `/index.html` is fine.
+Hash mode normalizes the first URL with `replaceState`, for example
+`/index.html#/app`, then keeps generated links on `/index.html` so only the hash
+changes.
+
+Hash mode still uses the Navigation API when the WebView exposes
+`window.navigation`. Plain fragments like `#section` and hash paths outside the
+configured `basePath` are not intercepted.
+
 For replace-style navigation:
 
 ```html

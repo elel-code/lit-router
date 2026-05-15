@@ -287,6 +287,20 @@ When a WebView starts at an entry document such as `/index.html`, hash mode
 normalizes the first URL with `replaceState`, for example `/index.html#/app`,
 and keeps later links on the same document path.
 
+URL shapes:
+
+| Configuration                      | History URL     | Hash URL                    |
+| ---------------------------------- | --------------- | --------------------------- |
+| `basePath: "/"`                    | `/settings`     | `/#/settings`               |
+| `basePath: "/"` root               | `/`             | `/#`                        |
+| `basePath: "/app"`                 | `/app/settings` | `/#/app/settings`           |
+| WebView entry + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
+
+Hash mode still uses the Navigation API when `window.navigation` is available.
+Otherwise it falls back to `popstate`, with `hashchange` covering direct hash
+updates. Plain document fragments such as `#section` are not treated as route
+links, and hash paths outside `basePath` are left to the browser.
+
 Named reverse routing supports literal segments, `:param`, `:param(<pattern>)`,
 `*`, and optional `?` tokens such as `:lang?/docs`. Route tokens with `+` or `*`
 modifiers are still rejected during `router.link()` generation.
