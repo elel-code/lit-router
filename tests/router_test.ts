@@ -588,7 +588,7 @@ Deno.test("commitNavigation does not mutate the resolved route detail", async ()
     const originalHistoryKey = detail.historyKey;
     const originalDirection = detail.direction;
 
-    internals.commitNavigation(detail, "push");
+    internals.commitNavigation(detail, "none", "test-commit-entry");
 
     assertEquals(detail.historyKey, originalHistoryKey);
     assertEquals(detail.direction, originalDirection);
@@ -1443,7 +1443,7 @@ Deno.test("hash mode resolves hash URLs and route URLs without navigating", asyn
   });
 });
 
-Deno.test("hash mode canonicalizes an initial index document URL to the base route", async () => {
+Deno.test("hash mode treats an initial index document URL as the base route", async () => {
   await withRouters(async (createRouter) => {
     const dom = browser();
     dom.history.replaceState(null, "", "/index.html");
@@ -1460,13 +1460,73 @@ Deno.test("hash mode canonicalizes an initial index document URL to the base rou
     await settle();
 
     assertEquals(dom.location.pathname, "/index.html");
-    assertEquals(dom.location.hash, "#/app");
+    assertEquals(dom.location.hash, "");
     assertEquals(router.current.pathname, "/app");
     assertEquals(router.current.localPathname, "/");
     assertEquals(
       router.link({ name: "settings" }),
       "/index.html#/app/settings",
     );
+  });
+});
+
+Deno.test("hash mode initial redirects go through Navigation API", async () => {
+  await withRouters(async (createRouter) => {
+    const dom = browser();
+    dom.history.replaceState(null, "", "/index.html#/");
+    const windowTarget = dom.window as Window & {
+      navigation?: EventTarget & {
+        currentEntry?: { key?: string };
+        navigate?: (
+          url: string,
+          options?: { history?: "push" | "replace" },
+        ) => unknown;
+      };
+    };
+    const originalNavigation = windowTarget.navigation;
+    const navigationApi = new EventTarget() as EventTarget & {
+      currentEntry: { key: string };
+      navigate: (
+        url: string,
+        options?: { history?: "push" | "replace" },
+      ) => unknown;
+    };
+    const navigations: Array<{
+      url: string;
+      history?: "push" | "replace";
+    }> = [];
+
+    navigationApi.currentEntry = { key: "initial-hash-entry" };
+    navigationApi.navigate = (url, options) => {
+      navigations.push({ url, history: options?.history });
+    };
+
+    Object.defineProperty(windowTarget, "navigation", {
+      configurable: true,
+      value: navigationApi,
+    });
+
+    try {
+      createRouter({
+        mode: "hash",
+        routes: [
+          { path: "", component: "test-route-page", guard: () => "/auth" },
+          { path: "auth", component: "test-route-page" },
+        ],
+      });
+
+      await settle();
+
+      assertEquals(navigations, [{
+        url: "/index.html#/auth",
+        history: "push",
+      }]);
+    } finally {
+      Object.defineProperty(windowTarget, "navigation", {
+        configurable: true,
+        value: originalNavigation,
+      });
+    }
   });
 });
 
@@ -2299,23 +2359,23 @@ Deno.test("router stores a distinct scroll history key per pushed entry", async 
 
     await settle();
 
-    const initialKey = (dom.history.state as { __litRouterEntryKey?: string })
-      ?.__litRouterEntryKey;
+    const navigation = dom.window as Window & {
+      navigation?: { currentEntry?: { key?: string } };
+    };
+    const initialKey = navigation.navigation?.currentEntry?.key;
     assert(typeof initialKey === "string" && initialKey.length > 0);
 
     router.push("/next");
     await settle();
 
-    const pushedKey = (dom.history.state as { __litRouterEntryKey?: string })
-      ?.__litRouterEntryKey;
+    const pushedKey = navigation.navigation?.currentEntry?.key;
     assert(typeof pushedKey === "string" && pushedKey.length > 0);
     assert(pushedKey !== initialKey);
 
     router.replace("/");
     await settle();
 
-    const replacedKey = (dom.history.state as { __litRouterEntryKey?: string })
-      ?.__litRouterEntryKey;
+    const replacedKey = navigation.navigation?.currentEntry?.key;
     assertEquals(replacedKey, pushedKey);
   });
 });
@@ -2456,16 +2516,30 @@ Deno.test("router builds links for optional route segments when params are omitt
   });
 });
 
-Deno.test("router prefers Navigation API listeners over popstate when available", async () => {
+Deno.test("router uses Navigation API listeners without popstate", async () => {
   await withRouters(async (createRouter) => {
     const dom = browser();
     const windowTarget = dom.window as Window & {
-      navigation?: EventTarget;
+      navigation?: EventTarget & {
+        currentEntry?: { key?: string };
+        navigate?: (
+          url: string,
+          options?: { history?: "push" | "replace" },
+        ) => unknown;
+      };
     };
     const originalNavigation = windowTarget.navigation;
     const originalAddEventListener = windowTarget.addEventListener;
     const originalRemoveEventListener = windowTarget.removeEventListener;
-    const navigationApi = new EventTarget();
+    const navigationApi = new EventTarget() as EventTarget & {
+      currentEntry: { key: string };
+      navigate: (
+        url: string,
+        options?: { history?: "push" | "replace" },
+      ) => unknown;
+    };
+    navigationApi.currentEntry = { key: "test-navigation-entry" };
+    navigationApi.navigate = () => undefined;
 
     let popstateAdds = 0;
     let popstateRemoves = 0;
@@ -2561,6 +2635,10 @@ Deno.test("router prefers Navigation API listeners over popstate when available"
 
       router.start();
       await settle();
+      Object.defineProperty(windowTarget, "navigation", {
+        configurable: true,
+        value: new EventTarget(),
+      });
       router.stop();
 
       assertEquals(popstateAdds, 0);
@@ -2590,6 +2668,7 @@ Deno.test("hash mode uses Navigation API listeners when available", async () => 
     dom.history.replaceState(null, "", "/#/app");
     const windowTarget = dom.window as Window & {
       navigation?: EventTarget & {
+        currentEntry?: { key?: string };
         navigate?: (
           url: string,
           options?: { history?: "push" | "replace" },
@@ -2600,6 +2679,7 @@ Deno.test("hash mode uses Navigation API listeners when available", async () => 
     const originalAddEventListener = windowTarget.addEventListener;
     const originalRemoveEventListener = windowTarget.removeEventListener;
     const navigationApi = new EventTarget() as EventTarget & {
+      currentEntry: { key: string };
       navigate: (
         url: string,
         options?: { history?: "push" | "replace" },
@@ -2614,6 +2694,7 @@ Deno.test("hash mode uses Navigation API listeners when available", async () => 
       history?: "push" | "replace";
     }> = [];
 
+    navigationApi.currentEntry = { key: "hash-navigation-entry" };
     navigationApi.navigate = (url, options) => {
       navigations.push({ url, history: options?.history });
     };

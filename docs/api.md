@@ -82,9 +82,8 @@ Notes:
 - `basePath` defaults to `"/"`.
 - `mode` defaults to `"history"`. In `"hash"` mode, route paths live after `#`
   (for example `/#/app/settings`) so static hosts do not need rewrite rules.
-- Hash mode keeps using the Navigation API when `window.navigation` is
-  available. Without it, the router falls back to `popstate` and listens to
-  `hashchange` for direct hash edits.
+- The router requires the Navigation API for same-document navigations,
+  including hash-mode route changes.
 - Only one started `Router` instance is supported per document.
 - Use `configure()` to update router options after construction.
 
@@ -119,9 +118,8 @@ path is read from the hash payload. For example, `basePath: "/app"` matches
 Current routing mode. `"history"` uses the browser pathname. `"hash"` uses
 `#/path?query#fragment`, so the same `basePath` and route tree can move between
 history URLs such as `/app/settings` and hash URLs such as `/#/app/settings`. If
-the initial document URL has no route hash, hash mode normalizes it with
-`replaceState`; `/index.html` with `basePath: "/app"` becomes
-`/index.html#/app`.
+the initial document URL has no route hash, hash mode treats it as the
+configured base route without rewriting the first URL.
 
 Common URL shapes:
 

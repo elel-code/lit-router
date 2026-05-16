@@ -269,12 +269,11 @@ fragment，其中包含配置的 `basePath`。
 | WebView 入口 + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
 
 对 Wails、Tauri 和其他 WebView 壳来说，从 `/index.html` 启动没有问题。hash
-模式会用 `replaceState` 把首次 URL 规范化，例如 `/index.html#/app`，之后生成的
-链接继续保留 `/index.html`，只改变 hash。
+模式会把首次 URL 当作配置的 base route，不会改写它；之后生成的链接继续保留
+`/index.html`，只改变 hash。
 
-当 WebView 暴露 `window.navigation` 时，hash 模式仍然会使用 Navigation API。
-`#section` 这类普通文档片段，以及不在当前 `basePath` 内的 hash 路径，不会被路由
-接管。
+hash 模式使用 Navigation API。`#section` 这类普通文档片段，以及不在当前
+`basePath` 内的 hash 路径，不会被路由接管。
 
 如果要走 replace 语义：
 
@@ -444,7 +443,7 @@ router.addEventListener("route-error", (event) => {
 额外注意：
 
 - 同一个 document 里只支持一个已启动的 `Router`
-- 如果浏览器支持 `Navigation API`，路由会优先使用它而不是 `popstate`
+- 路由要求浏览器提供 `Navigation API`
 - `router-view` 内部有滚动缓存，但已经做了有界限制，不会无限增长
 - 当前发布链路是 Deno-first + JSR-first
 
@@ -456,6 +455,7 @@ router.addEventListener("route-error", (event) => {
 - 新组件默认使用 `routeContext`
 - 父路由组件显式提供 `slot`
 - 根壳层统一处理 `route-error` / `route-not-found`
+- Lit 依赖保持在当前包使用的 3.x range
 
 ### 不推荐
 
@@ -476,7 +476,7 @@ router.addEventListener("route-error", (event) => {
 额外注意：
 
 - 同一个 document 内只支持一个已启动的 `Router`
-- 如果浏览器支持 `Navigation API`，路由会优先使用它而不是 `popstate`
+- 路由要求浏览器提供 `Navigation API`
 - history entry 方向缓存和 `router-view` 滚动缓存都是有界的
 - `load()` 的 Promise 返回值不会注入组件上下文，它只承担代码分割或副作用职责
 - 这套核心不覆盖 SSR，也不内建激活链接之类的壳层能力

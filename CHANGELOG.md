@@ -1,12 +1,18 @@
 # Changelog
 
-## 1.1.0 (2026-05-16)
+## 1.1.2 (2026-05-16)
+
+### Changed
+
+- Upgrade the `lit` npm dependency range to `^3.3.3`.
+
+## 1.1.1 (2026-05-16)
 
 ### Added
 
 - Hash routing via `new Router({ mode: "hash" })`, including generated
-  `/#/base/path` links, hash URL resolution, click interception, guard
-  redirects, and `popstate` / `hashchange` navigation handling.
+  `/#/base/path` links, hash URL resolution, click interception, and guard
+  redirects through the Navigation API.
 
 ## 1.0.3 (2026-05-08)
 
@@ -95,7 +101,7 @@
 - Route tree declared in TypeScript with `RouteDefinition[]`.
 - `URLPattern`-based route matching with specificity ordering.
 - Named `<slot>`-based nested route rendering.
-- `Navigation API` integration with `popstate` fallback.
+- `Navigation API` integration.
 - `View Transitions API` support in `<router-view>`.
 - `basePath` support for sub-path deployments.
 - Same-origin `<a>` click interception (HTML and SVG).

@@ -81,8 +81,7 @@ const router = new Router({
 - `basePath` 默认是 `"/"`
 - `mode` 默认是 `"history"`。`"hash"` 模式会把路由路径放在 `#` 后面，例如
   `/#/app/settings`，静态托管不需要配置 rewrite 规则
-- hash 模式在存在 `window.navigation` 时仍然会使用 Navigation API；否则回退到
-  `popstate`，并用 `hashchange` 覆盖直接修改 hash 的场景
+- 路由要求浏览器提供 Navigation API；hash 模式的路由切换也走同一个入口
 - 同一个 document 内只允许同时启动一个 `Router`
 - 运行时更新配置建议统一走 `configure()`
 
@@ -116,8 +115,7 @@ const router = new Router({
 当前路由模式。`"history"` 使用浏览器 pathname；`"hash"` 使用
 `#/path?query#fragment`。同一套 `basePath` 和路由树可以在 history URL
 `/app/settings` 与 hash URL `/#/app/settings` 之间切换。如果初始 document URL
-没有路由 hash，hash 模式会用 `replaceState` 做规范化；例如 `/index.html` 配合
-`basePath: "/app"` 会变成 `/index.html#/app`。
+没有路由 hash，hash 模式会把它当作配置的 base route，不会改写首次 URL。
 
 常见 URL 形态：
 

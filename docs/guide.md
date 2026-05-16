@@ -275,13 +275,11 @@ Common URL shapes:
 | WebView entry + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
 
 For Wails, Tauri, and other WebView shells, starting from `/index.html` is fine.
-Hash mode normalizes the first URL with `replaceState`, for example
-`/index.html#/app`, then keeps generated links on `/index.html` so only the hash
-changes.
+Hash mode matches the configured base route without rewriting the first URL,
+then keeps generated links on `/index.html` so only the hash changes.
 
-Hash mode still uses the Navigation API when the WebView exposes
-`window.navigation`. Plain fragments like `#section` and hash paths outside the
-configured `basePath` are not intercepted.
+Hash mode uses the Navigation API. Plain fragments like `#section` and hash
+paths outside the configured `basePath` are not intercepted.
 
 For replace-style navigation:
 
@@ -402,7 +400,7 @@ See [api.md](./api.md) for full event detail types.
 - Modern browsers only. `URLPattern` is required.
 - Single-document SPA only. No SSR.
 - Only one started `Router` per document.
-- Prefers `Navigation API` over `popstate` when available.
+- Requires the Navigation API for same-document navigations.
 - History entry direction tracking and scroll cache are bounded.
 - `load()` promise values are not injected into component context.
 
@@ -412,6 +410,7 @@ See [api.md](./api.md) for full event detail types.
 - New components should use the `routeContext` contract.
 - Parent route components should explicitly provide child `<slot>` elements.
 - Handle `route-error` and `route-not-found` at the shell level.
+- Keep the Lit dependency on the current 3.x range used by the package.
 - If a hash anchor lives inside a shadow tree, expose the same `id` on the host
   element for O(1) lookup.
 

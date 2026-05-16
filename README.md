@@ -284,8 +284,8 @@ history and hash modes moves `/app/users/123` between the browser pathname and
 the hash payload without changing the route tree.
 
 When a WebView starts at an entry document such as `/index.html`, hash mode
-normalizes the first URL with `replaceState`, for example `/index.html#/app`,
-and keeps later links on the same document path.
+matches the configured base route without rewriting the first URL. Generated
+links keep using the same document path.
 
 URL shapes:
 
@@ -296,10 +296,9 @@ URL shapes:
 | `basePath: "/app"`                 | `/app/settings` | `/#/app/settings`           |
 | WebView entry + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
 
-Hash mode still uses the Navigation API when `window.navigation` is available.
-Otherwise it falls back to `popstate`, with `hashchange` covering direct hash
-updates. Plain document fragments such as `#section` are not treated as route
-links, and hash paths outside `basePath` are left to the browser.
+Hash mode uses the Navigation API. Plain document fragments such as `#section`
+are not treated as route links, and hash paths outside `basePath` are left to
+the browser.
 
 Named reverse routing supports literal segments, `:param`, `:param(<pattern>)`,
 `*`, and optional `?` tokens such as `:lang?/docs`. Route tokens with `+` or `*`
@@ -428,12 +427,12 @@ Key files:
 
 - This package is validated and published with the Deno toolchain. JSR publishes
   the TypeScript source directly.
-- The source still imports `lit` through Deno's native `npm:` support. That is a
-  Deno runtime feature, not an `npm install` / `npm publish` workflow.
+- The source imports `lit` through Deno's native `npm:` support and tracks
+  `lit@^3.3.3`. That is a Deno runtime feature, not an `npm install` /
+  `npm publish` workflow.
 - The router intentionally depends on the native `URLPattern` API. Use a modern
   browser baseline or load a `URLPattern` polyfill before `router.start()`.
-- When the `Navigation API` is available, the router prefers it over `popstate`
-  for same-document navigations.
+- The router requires the `Navigation API` for same-document navigations.
 - Only one started `Router` instance is supported per document at a time.
 - Route guards, lazy loaders, and route commits are async and race-aware.
 - History-entry direction bookkeeping is bounded instead of growing without

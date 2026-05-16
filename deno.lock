@@ -4,12 +4,11 @@
     "jsr:@std/assert@^1.0.15": "1.0.19",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "npm:@happy-dom/global-registrator@^20.0.4": "20.9.0",
-    "npm:@jsr/elelcode__lit-router@*": "1.0.3",
     "npm:@jsr/elelcode__lit-router@1.0.2": "1.0.2",
     "npm:@jsr/elelcode__lit-router@1.0.3": "1.0.3",
     "npm:esbuild@0.25.8": "0.25.8",
     "npm:happy-dom@^20.9.0": "20.9.0",
-    "npm:lit@^3.3.2": "3.3.2",
+    "npm:lit@^3.3.3": "3.3.3",
     "npm:puppeteer@^24.15.0": "24.43.0",
     "npm:vite@^8.0.5": "8.0.9_esbuild@0.25.8"
   },
@@ -765,8 +764,8 @@
         "@types/trusted-types"
       ]
     },
-    "lit@3.3.2": {
-      "integrity": "sha512-NF9zbsP79l4ao2SNrH3NkfmFgN/hBYSQo90saIVI1o5GpjAdCPVstVzO1MrLOakHoEhYkrtRjPK6Ob521aoYWQ==",
+    "lit@3.3.3": {
+      "integrity": "sha512-fycuvZg/hkpozL00lm1pEJH5nN/lr9ZXd6mJI2HSN4+Bzc+LDNdEApJ6HFbPkdFNHLvOplIIuJvxkS4XUxqirw==",
       "dependencies": [
         "@lit/reactive-element",
         "lit-element",
@@ -1098,7 +1097,7 @@
     "dependencies": [
       "jsr:@std/assert@^1.0.15",
       "npm:happy-dom@^20.9.0",
-      "npm:lit@^3.3.2",
+      "npm:lit@^3.3.3",
       "npm:puppeteer@^24.15.0"
     ]
   }
