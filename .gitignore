@@ -30,3 +30,5 @@ chat_export_*.md
 dist-e2e/
 lib/
 .deepseek
+examples/saucer-mvp/
+API_REFERENCE.md
