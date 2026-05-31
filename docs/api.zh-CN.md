@@ -1,6 +1,7 @@
 # API 参考
 
-本文档描述 `@elelcode/lit-router` 当前公开导出的 API。
+本文档描述 `@elelcode/lit-router` 当前公开导出的 API。v1 到 v2 的破坏性变更见
+[v2 Migration Guide](./migration-v2.md)。
 
 使用时通常要同时引入类 API 和自定义元素注册：
 
@@ -22,6 +23,7 @@ import {
   type RouteDefinition,
   type RouteErrorDetail,
   type RouteGuard,
+  type RouteGuardRedirect,
   type RouteGuardResult,
   type RouteInsertOptions,
   type RouteLeaveGuard,
@@ -43,7 +45,7 @@ import {
   type RouterEventMap,
   type RouterLinkAttributes,
   type RouterLinkOptions,
-  type RouterMode,
+  type RouterOptions,
   type RouterSlotDetail,
   type RouterSlotDetailJson,
   RouterView,
@@ -72,16 +74,15 @@ const router = new Router({
 
 - `routes?: RouteDefinition[]`
 - `basePath?: string`
-- `mode?: "history" | "hash"`
 - `beforeRoute?: RouteGuard`
 - `autoStart?: boolean`
 
 说明：
 
 - `basePath` 默认是 `"/"`
-- `mode` 默认是 `"history"`。`"hash"` 模式会把路由路径放在 `#` 后面，例如
-  `/#/app/settings`，静态托管不需要配置 rewrite 规则
-- 路由要求浏览器提供 Navigation API；hash 模式的路由切换也走同一个入口
+- 路由要求浏览器提供 Navigation API
+- 路由状态只从 Navigation API 的 `navigate` 事件提交；不会以 `popstate`、
+  `hashchange` 或直接 History API mutation 作为 fallback 路由路径
 - 同一个 document 内只允许同时启动一个 `Router`
 - 运行时更新配置建议统一走 `configure()`
 
@@ -105,27 +106,6 @@ const router = new Router({
 
 当前 `basePath`。如果要在运行时修改，建议使用
 `configure({ basePath })`，这样会立即刷新当前 URL。
-
-在 hash 模式下，`basePath` 仍然是应用路由路径的一部分，只是这个路径会从 hash
-载荷里读取。例如 `basePath: "/app"` 会匹配 `/#/app/settings`，而不是
-`/app/settings`。
-
-#### `router.mode: RouterMode`
-
-当前路由模式。`"history"` 使用浏览器 pathname；`"hash"` 使用
-`#/path?query#fragment`。同一套 `basePath` 和路由树可以在 history URL
-`/app/settings` 与 hash URL `/#/app/settings` 之间切换。如果初始 document URL
-没有路由 hash，hash 模式会把它当作配置的 base route，不会改写首次 URL。
-
-常见 URL 形态：
-
-| 配置                              | History URL     | Hash URL                    |
-| --------------------------------- | --------------- | --------------------------- |
-| `basePath: "/"` 根路由            | `/`             | `/#`                        |
-| `basePath: "/"` 子路由            | `/settings`     | `/#/settings`               |
-| `basePath: "/app"` 根路由         | `/app`          | `/#/app`                    |
-| `basePath: "/app"` 子路由         | `/app/settings` | `/#/app/settings`           |
-| WebView 入口 + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
 
 #### `router.beforeRoute?: RouteGuard`
 
@@ -170,7 +150,6 @@ router.configure({
 
 - `routes`
 - `basePath`
-- `mode`
 - `beforeRoute`
 
 #### `router.setRoutes(routes): void`
@@ -266,9 +245,7 @@ router.batchRouteUpdates(() => {
 #### `router.resolveUrl(url): RouterChangeDetail | null`
 
 在不导航的情况下解析字符串或 `URL`。当 URL 不在 `basePath`
-内，或没有命中任何路由分支时返回 `null`。hash 模式同时接受
-`/app/settings/profile` 这样的路由 URL，以及 `/#/app/settings/profile`
-这样的浏览器 URL。
+内，或没有命中任何路由分支时返回 `null`。
 
 ```ts
 const match = router.resolveUrl("/settings/profile");
@@ -301,10 +278,6 @@ const href = router.link({
 说明：
 
 - 依赖路由 `name`
-- hash 模式会返回把路由编码到 `#` 后的 href，例如
-  `/#/app/messages/42?tab=activity#summary`
-- hash 模式的根路由在 `basePath: "/"` 时生成 `#`，在 `basePath: "/app"` 时生成
-  `#/app`
 - 支持字面量片段、`:param`、`:param(<pattern>)`、`*`，以及 `:lang?/docs`
   这类可选 `?` 片段
 - 路径里如果出现 `+` 或 `*` 参数修饰符，反向生成时会直接抛错
@@ -321,8 +294,7 @@ const attrs = router.linkAttributes(
 // { href: "/messages/42", "data-router-replace": "" }
 ```
 
-hash 模式不会接管 `#section` 这类普通文档片段。当 `basePath: "/app"` 时，
-`/#/outside` 这类不在 `basePath` 内的 hash 路由也会交还给浏览器。
+`#section` 这类普通文档片段不会被路由接管。
 
 ### 事件
 
@@ -536,7 +508,7 @@ outlet host 会反映导航方向：
 
 - 优先聚焦 `[data-route-focus]`
 - 找不到时回退到聚焦 viewport 自身
-- 滚动恢复绑定在 history entry 上，而不是单纯的 URL
+- 滚动恢复绑定在 Navigation API entry 上，而不是单纯的 URL
 - hash 锚点只通过 `document.getElementById()` 查找
 
 如果锚点在组件的 shadow tree 里，请把同样的 `id` 暴露到 host 上，保持 O(1)
@@ -625,7 +597,7 @@ interface RouterLinkAttributes {
 }
 ```
 
-### `RouteGuardResult`
+### `RouteGuardRedirect` / `RouteGuardResult`
 
 进入守卫和离开守卫都可以返回：
 
@@ -641,6 +613,15 @@ interface RouterLinkAttributes {
 - `true` 或 `undefined`：放行
 - `false`：阻止导航
 - 重定向值：立即重定向
+
+```ts
+type RouteGuardRedirect =
+  | string
+  | URL
+  | { to: string | URL; replace?: boolean };
+
+type RouteGuardResult = boolean | void | RouteGuardRedirect;
+```
 
 ### `RouteGuard`
 
@@ -763,7 +744,7 @@ interface RouterChangeDetail {
     params: Record<string, string>;
   }>;
   url: URL;
-  historyKey: string;
+  navigationKey: string;
   direction: "forward" | "backward" | "none";
   toJSON?: () => RouterChangeDetailJson;
 }
@@ -780,7 +761,7 @@ interface RouterChangeDetail {
 - `slots`：包含主 `"route-child"` slot 在内的 slot 详情索引
 - `toJSON`：把 `query` 序列化成 plain object、把 `url` 序列化成字符串，供
   `JSON.stringify(detail)` 使用
-- `historyKey`：history entry 级别的方向与滚动跟踪键
+- `navigationKey`：Navigation API entry 级别的方向与滚动跟踪键
 - `direction`：当前导航方向
 
 ### `RouterSlotDetail`
@@ -843,7 +824,9 @@ interface RouteTreeChangeDetail {
 
 - 仅面向现代浏览器，依赖原生 `URLPattern`
 - 设计目标是单 document SPA，不覆盖 SSR
+- Navigation API 是唯一路由传输层；History API 和 hash 路由 fallback
+  明确不在核心范围内
 - 同源链接拦截只发生在配置的 `basePath` 内
 - 异步懒加载与导航 commit 都做了竞态保护
-- history 方向缓存是有界的，不会无限增长
+- Navigation entry 方向缓存是有界的，不会无限增长
 - 同一路由在 `load()` 未完成期间会复用同一个 pending Promise

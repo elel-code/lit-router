@@ -302,73 +302,73 @@ export class AppRoot extends LitElement {
         transform 180ms ease,
         background-color 180ms ease,
         color 180ms ease;
+    }
+
+    .nav a:hover,
+    .nav button:hover,
+    .actions a:hover {
+      transform: translateY(-1px);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .status {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      border-radius: 24px;
+      padding: 20px 22px;
+      margin-bottom: 18px;
+    }
+
+    .status strong,
+    .status code {
+      display: block;
+      margin-top: 6px;
+      font-size: 0.98rem;
+    }
+
+    .status code,
+    pre,
+    code {
+      font-family: var(--mono);
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    router-view {
+      display: block;
+      min-height: 320px;
+    }
+
+    @media (max-width: 720px) {
+      .shell {
+        width: min(100vw - 20px, 960px);
+        padding: 28px 0 40px;
       }
 
-      .nav a:hover,
-      .nav button:hover,
-      .actions a:hover {
-        transform: translateY(-1px);
-        background: var(--accent-soft);
-        color: var(--accent);
+      .nav {
+        border-radius: 28px;
       }
 
       .status {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 16px;
-        border-radius: 24px;
-        padding: 20px 22px;
-        margin-bottom: 18px;
-      }
-
-      .status strong,
-      .status code {
-        display: block;
-        margin-top: 6px;
-        font-size: 0.98rem;
-      }
-
-      .status code,
-      pre,
-      code {
-        font-family: var(--mono);
-      }
-
-      .label {
-        color: var(--muted);
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
+        grid-template-columns: 1fr;
       }
 
       router-view {
-        display: block;
-        min-height: 320px;
+        min-height: 280px;
       }
-
-      @media (max-width: 720px) {
-        .shell {
-          width: min(100vw - 20px, 960px);
-          padding: 28px 0 40px;
-        }
-
-        .nav {
-          border-radius: 28px;
-        }
-
-        .status {
-          grid-template-columns: 1fr;
-        }
-
-        router-view {
-          min-height: 280px;
-        }
-      }
-    `;
-  }
-
-  declare global {
-    interface HTMLElementTagNameMap {
-      "app-root": AppRoot;
     }
+  `;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "app-root": AppRoot;
   }
+}

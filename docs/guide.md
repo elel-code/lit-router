@@ -15,6 +15,12 @@ reimplementing them:
 If your application targets modern browsers as a single-document SPA, this
 router is a more direct fit than framework-era alternatives.
 
+Routing is Navigation API-first. The router listens to `navigate` events,
+commits only after the Navigation API accepts the transition, and uses
+`navigation.currentEntry.key` for per-entry direction and scroll state. It does
+not maintain a parallel `popstate`, `hashchange`, or direct
+`history.pushState()` router path.
+
 The route tree can be updated at runtime—insert, remove, or replace branches
 without tearing down the router. This suits permission-driven shells, feature
 flags, and plugin-style page assembly.
@@ -24,6 +30,7 @@ Further reading:
 - English API reference: [api.md](./api.md)
 - Chinese API reference: [api.zh-CN.md](./api.zh-CN.md)
 - Chinese guide: [guide.zh-CN.md](./guide.zh-CN.md)
+- v2 migration guide: [migration-v2.md](./migration-v2.md)
 
 ## Install
 
@@ -248,39 +255,6 @@ The router intercepts same-origin `<a>` clicks inside the configured `basePath`:
 
 Links outside `basePath` fall back to native browser navigation.
 
-### Hash Mode
-
-Use `mode: "hash"` when your static host cannot rewrite every route URL to the
-app shell:
-
-```ts
-const router = new Router({
-  mode: "hash",
-  basePath: "/app",
-  routes,
-});
-```
-
-Generated links look like `/#/app/settings/profile`. The router matches the
-path, query, and fragment inside `#`, including the configured `basePath`.
-
-Common URL shapes:
-
-| Configuration                      | History URL     | Hash URL                    |
-| ---------------------------------- | --------------- | --------------------------- |
-| `basePath: "/"` root               | `/`             | `/#`                        |
-| `basePath: "/"` route              | `/settings`     | `/#/settings`               |
-| `basePath: "/app"` root            | `/app`          | `/#/app`                    |
-| `basePath: "/app"` route           | `/app/settings` | `/#/app/settings`           |
-| WebView entry + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
-
-For Wails, Tauri, and other WebView shells, starting from `/index.html` is fine.
-Hash mode matches the configured base route without rewriting the first URL,
-then keeps generated links on `/index.html` so only the hash changes.
-
-Hash mode uses the Navigation API. Plain fragments like `#section` and hash
-paths outside the configured `basePath` are not intercepted.
-
 For replace-style navigation:
 
 ```html
@@ -362,7 +336,7 @@ DOM slots:
 After a route transition, `<router-view>`:
 
 1. Mounts the route branch
-2. Restores scroll position (per history entry, not just per URL)
+2. Restores scroll position (per Navigation API entry, not just per URL)
 3. Handles focus: prefers `[data-route-focus]`, then falls back to the viewport
 4. Dispatches `route-change`
 
@@ -400,8 +374,9 @@ See [api.md](./api.md) for full event detail types.
 - Modern browsers only. `URLPattern` is required.
 - Single-document SPA only. No SSR.
 - Only one started `Router` per document.
-- Requires the Navigation API for same-document navigations.
-- History entry direction tracking and scroll cache are bounded.
+- Requires the Navigation API for same-document navigations; there is no History
+  API or hash routing fallback.
+- Navigation entry direction tracking and scroll cache are bounded.
 - `load()` promise values are not injected into component context.
 
 ## Development Recommendations
@@ -419,5 +394,6 @@ See [api.md](./api.md) for full event detail types.
 - [English API reference](./api.md) — full type signatures and method docs
 - [中文 API 参考](./api.zh-CN.md) — Chinese API reference
 - [中文指南](./guide.zh-CN.md) — Chinese guide
+- [v2 Migration Guide](./migration-v2.md) — breaking changes from v1
 - [Slot outlets design](./slot-outlets-design.md) — multi-outlet architecture
 - [Changelog](../CHANGELOG.md) — version history

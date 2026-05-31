@@ -1,7 +1,6 @@
 import { browserDocument, browserWindow } from "./browser-env.ts";
 
-type HistoryMode = "push" | "replace";
-export type RouterMode = "history" | "hash";
+type NavigationHistoryMode = "push" | "replace";
 type MaybePromise<T> = T | Promise<T>;
 export type NavigationDirection = "forward" | "backward" | "none";
 
@@ -41,7 +40,7 @@ export interface RouterLinkAttributes {
   "data-router-replace"?: "";
 }
 
-type GuardRedirect =
+export type RouteGuardRedirect =
   | string
   | URL
   | {
@@ -49,7 +48,7 @@ type GuardRedirect =
     replace?: boolean;
   };
 
-export type RouteGuardResult = boolean | void | GuardRedirect;
+export type RouteGuardResult = boolean | void | RouteGuardRedirect;
 export type RouteGuard = (
   detail: RouterChangeDetail & {
     from: RouterChangeDetail | null;
@@ -103,7 +102,10 @@ export type ReadonlyRouteDefinition = Readonly<
 >;
 
 interface NavigationApi extends EventTarget {
-  navigate: (url: string, options?: { history?: HistoryMode }) => unknown;
+  navigate: (
+    url: string,
+    options?: { history?: NavigationHistoryMode },
+  ) => unknown;
   currentEntry?: {
     key?: string;
   };
@@ -132,7 +134,7 @@ interface RedirectInstruction {
 }
 
 interface RouteTransitionOptions {
-  history: HistoryMode | "none";
+  history: NavigationHistoryMode | "none";
   skipIfSame?: boolean;
   redirectDepth?: number;
 }
@@ -140,8 +142,8 @@ interface RouteTransitionOptions {
 interface ActiveNavigation {
   id: number;
   url: URL;
-  history: HistoryMode | "none";
-  historyKey?: string;
+  history: NavigationHistoryMode | "none";
+  navigationKey?: string;
   detail: RouterChangeDetail | null;
   abortController: AbortController;
 }
@@ -186,7 +188,7 @@ export interface RouterChangeDetail {
   slotParams?: Record<string, Record<string, string>>;
   slots?: Record<string, RouterSlotDetail>;
   url: URL;
-  historyKey: string;
+  navigationKey: string;
   direction: NavigationDirection;
   toJSON?: () => RouterChangeDetailJson;
 }
@@ -217,7 +219,7 @@ export interface RouterChangeDetailJson {
   slotParams?: Record<string, Record<string, string>>;
   slots?: Record<string, RouterSlotDetailJson>;
   url: string;
-  historyKey: string;
+  navigationKey: string;
   direction: NavigationDirection;
 }
 
@@ -257,7 +259,6 @@ export interface RouteLoadingDetail {
 export interface RouterOptions {
   routes?: RouteDefinition[];
   basePath?: string;
-  mode?: RouterMode;
   beforeRoute?: RouteGuard;
   autoStart?: boolean;
 }
@@ -325,8 +326,8 @@ const DEFAULT_CHILD_SLOT = "route-child";
 const RESERVED_ROUTE_SLOTS = new Set(["404", "error"]);
 const ROUTE_TOKEN_PATTERN = /:([A-Za-z0-9_-]+)(\([^)]*\))?([?+*])?/g;
 const EXACT_PATH_END_SPECIFICITY = 3;
-const MAX_HISTORY_ENTRY_ORDERS = 256;
-const HISTORY_ENTRY_ORDER_PRUNE_TO = 128;
+const MAX_NAVIGATION_ENTRY_ORDERS = 256;
+const NAVIGATION_ENTRY_ORDER_PRUNE_TO = 128;
 
 function normalizePathname(pathname: string): string {
   if (!pathname || pathname === ROOT_PATH) {
@@ -339,10 +340,6 @@ function normalizePathname(pathname: string): string {
 
 function normalizeBasePath(basePath: string): string {
   return normalizePathname(basePath || ROOT_PATH);
-}
-
-function normalizeRouterMode(mode: RouterMode | undefined): RouterMode {
-  return mode === "hash" ? "hash" : "history";
 }
 
 function stripBasePath(pathname: string, basePath: string): string | null {
@@ -713,7 +710,7 @@ function detailToJSON(this: RouterChangeDetail): RouterChangeDetailJson {
     slotParams: this.slotParams,
     slots: this.slots,
     url: this.url.href,
-    historyKey: this.historyKey,
+    navigationKey: this.navigationKey,
     direction: this.direction,
   };
 }
@@ -1203,53 +1200,6 @@ function normalizeHash(hash?: string): string {
   return hash.startsWith("#") ? hash : `#${hash}`;
 }
 
-function isRouteHash(hash: string): boolean {
-  if (!hash || hash === "#") {
-    return false;
-  }
-
-  const value = hash.slice(1);
-  return value.startsWith("/") || value.startsWith("!/") ||
-    value.startsWith("?");
-}
-
-function hasEmptyHashMarker(href: string): boolean {
-  return href.endsWith("#");
-}
-
-function hashRouteToUrl(hash: string, origin: string): URL {
-  if (!hash || hash === "#") {
-    return new URL(ROOT_PATH, origin);
-  }
-
-  let value = hash.startsWith("#") ? hash.slice(1) : hash;
-  if (value.startsWith("!")) {
-    value = value.slice(1);
-  }
-
-  if (!value) {
-    return new URL(ROOT_PATH, origin);
-  }
-
-  if (value.startsWith("?")) {
-    return new URL(`${ROOT_PATH}${value}`, origin);
-  }
-
-  if (!value.startsWith(ROOT_PATH)) {
-    return new URL(`${ROOT_PATH}#${value}`, origin);
-  }
-
-  return new URL(value, origin);
-}
-
-function hashRouteHref(url: URL): string {
-  if (url.pathname === ROOT_PATH && !url.search && !url.hash) {
-    return "#";
-  }
-
-  return `#${url.pathname}${url.search}${url.hash}`;
-}
-
 function matchSlotRoutes(
   routes: CompiledRouteDefinition[],
   remainingSegments: string[],
@@ -1327,7 +1277,6 @@ export class Router extends EventTarget {
 
   private routeTree: RouteDefinition[] = [];
   basePath: string;
-  mode: RouterMode;
   beforeRoute?: RouteGuard;
 
   current: RouterChangeDetail = {
@@ -1340,7 +1289,7 @@ export class Router extends EventTarget {
     params: {},
     branch: [],
     url: new URL(browserWindow().location.href),
-    historyKey: "",
+    navigationKey: "",
     direction: "none",
   };
 
@@ -1357,8 +1306,8 @@ export class Router extends EventTarget {
     [],
   );
   private routeCount = 0;
-  private readonly historyEntryOrders = new Map<string, number>();
-  private nextHistoryEntryOrder = 0;
+  private readonly navigationEntryOrders = new Map<string, number>();
+  private nextNavigationEntryOrder = 0;
   private navigationId = 0;
   private activeNavigation?: ActiveNavigation;
   private browserNavigation?: NavigationApi;
@@ -1450,7 +1399,7 @@ export class Router extends EventTarget {
     }
 
     const href = this.getAnchorHref(anchor);
-    if (!href || (this.mode === "history" && href.startsWith("#"))) {
+    if (!href || href.startsWith("#")) {
       return;
     }
 
@@ -1464,16 +1413,9 @@ export class Router extends EventTarget {
       return;
     }
 
-    if (this.mode === "hash" && url.hash && !isRouteHash(url.hash)) {
-      return;
-    }
-
     const shouldReplace = anchor.hasAttribute("data-router-replace");
     event.preventDefault();
-    this.navigate(
-      this.mode === "hash" ? this.browserUrlToRouteUrl(url) : url,
-      shouldReplace ? "replace" : "push",
-    );
+    this.navigate(url, shouldReplace ? "replace" : "push");
   };
 
   private readonly onNavigate = (event: Event) => {
@@ -1492,25 +1434,18 @@ export class Router extends EventTarget {
       return;
     }
 
-    if (this.mode === "hash" && nextUrl.hash && !isRouteHash(nextUrl.hash)) {
-      return;
-    }
-
     if (!this.managesUrl(nextUrl)) {
       return;
     }
 
-    const routeUrl = this.mode === "hash"
-      ? this.browserUrlToRouteUrl(nextUrl)
-      : nextUrl;
-    const redirectDepth = this.consumePendingRedirectDepth(routeUrl);
+    const redirectDepth = this.consumePendingRedirectDepth(nextUrl);
 
     navigateEvent.intercept({
       scroll: "manual",
       handler: async () => {
-        await this.routeTo(routeUrl, {
+        await this.routeTo(nextUrl, {
           history: "none",
-          historyKey: navigateEvent.destination.key,
+          navigationKey: navigateEvent.destination.key,
           redirectDepth,
         });
       },
@@ -1521,12 +1456,11 @@ export class Router extends EventTarget {
     super();
     this.routeTree = cloneRouteDefinitions(options.routes ?? []);
     this.basePath = normalizeBasePath(options.basePath ?? ROOT_PATH);
-    this.mode = normalizeRouterMode(options.mode);
     this.beforeRoute = options.beforeRoute;
     this.current = {
       ...this.current,
       basePath: this.basePath,
-      url: this.currentBrowserRouteUrl(),
+      url: new URL(browserWindow().location.href),
     };
     this.rebuildRouteState();
 
@@ -1565,12 +1499,12 @@ export class Router extends EventTarget {
 
     const navigationApi = this.requireNavigationApi();
     this.browserNavigation = navigationApi;
-    this.ensureHistoryEntryOrder(this.getCurrentHistoryEntryKey());
+    this.ensureNavigationEntryOrder(this.getCurrentNavigationEntryKey());
     this.started = true;
     Router.activeRouter = this;
     browserDocument().addEventListener("click", this.onDocumentClick);
     navigationApi.addEventListener("navigate", this.onNavigate);
-    void this.routeTo(this.initialBrowserRouteUrl(), {
+    void this.routeTo(new URL(browserWindow().location.href), {
       history: "none",
       skipIfSame: false,
     });
@@ -1596,7 +1530,7 @@ export class Router extends EventTarget {
   configure(
     options: Pick<
       RouterOptions,
-      "routes" | "basePath" | "mode" | "beforeRoute"
+      "routes" | "basePath" | "beforeRoute"
     >,
   ): void {
     if ("routes" in options) {
@@ -1607,10 +1541,6 @@ export class Router extends EventTarget {
 
     if (options.basePath !== undefined) {
       this.basePath = normalizeBasePath(options.basePath);
-    }
-
-    if (options.mode !== undefined) {
-      this.mode = normalizeRouterMode(options.mode);
     }
 
     if ("beforeRoute" in options) {
@@ -1761,7 +1691,7 @@ export class Router extends EventTarget {
 
   link(location: RouteLocation): string {
     const url = this.toRouteUrl(location);
-    return this.routeUrlToHref(url);
+    return `${url.pathname}${url.search}${url.hash}`;
   }
 
   linkAttributes(
@@ -1806,7 +1736,7 @@ export class Router extends EventTarget {
 
     if (!navigation || typeof navigation.navigate !== "function") {
       throw new Error(
-        "Router requires Navigation API support. Use a modern browser with window.navigation.",
+        "Router is Navigation API-first and requires window.navigation.navigate; it does not provide a History API fallback.",
       );
     }
 
@@ -1825,30 +1755,32 @@ export class Router extends EventTarget {
     return anchor.getAttribute("href") ?? anchor.getAttribute("xlink:href");
   }
 
-  private ensureHistoryEntryOrder(key: string): number {
-    const existingOrder = this.historyEntryOrders.get(key);
+  private ensureNavigationEntryOrder(key: string): number {
+    const existingOrder = this.navigationEntryOrders.get(key);
     if (existingOrder !== undefined) {
       return existingOrder;
     }
 
-    const nextOrder = this.nextHistoryEntryOrder;
-    this.historyEntryOrders.set(key, nextOrder);
-    this.nextHistoryEntryOrder += 1;
-    this.pruneHistoryEntryOrders();
+    const nextOrder = this.nextNavigationEntryOrder;
+    this.navigationEntryOrders.set(key, nextOrder);
+    this.nextNavigationEntryOrder += 1;
+    this.pruneNavigationEntryOrders();
     return nextOrder;
   }
 
-  private pruneHistoryEntryOrders(): void {
-    if (this.historyEntryOrders.size <= MAX_HISTORY_ENTRY_ORDERS) {
+  private pruneNavigationEntryOrders(): void {
+    if (this.navigationEntryOrders.size <= MAX_NAVIGATION_ENTRY_ORDERS) {
       return;
     }
 
-    const currentKey = this.current.historyKey;
-    const keepThreshold = this.nextHistoryEntryOrder -
-      HISTORY_ENTRY_ORDER_PRUNE_TO;
+    const currentKey = this.current.navigationKey;
+    const keepThreshold = this.nextNavigationEntryOrder -
+      NAVIGATION_ENTRY_ORDER_PRUNE_TO;
 
-    for (const [key, order] of this.historyEntryOrders) {
-      if (this.historyEntryOrders.size <= HISTORY_ENTRY_ORDER_PRUNE_TO) {
+    for (const [key, order] of this.navigationEntryOrders) {
+      if (
+        this.navigationEntryOrders.size <= NAVIGATION_ENTRY_ORDER_PRUNE_TO
+      ) {
         break;
       }
 
@@ -1856,39 +1788,41 @@ export class Router extends EventTarget {
         continue;
       }
 
-      this.historyEntryOrders.delete(key);
+      this.navigationEntryOrders.delete(key);
     }
   }
 
-  private getCurrentHistoryEntryKey(): string {
+  private getCurrentNavigationEntryKey(): string {
     const navigationEntryKey = this.navigationApi.currentEntry?.key;
     if (navigationEntryKey) {
       return navigationEntryKey;
     }
 
     throw new Error(
-      "Router requires Navigation API currentEntry.key support.",
+      "Router is Navigation API-first and requires window.navigation.currentEntry.key for per-entry state.",
     );
   }
 
   private resolveNavigationDirection(
-    history: HistoryMode | "none",
-    nextHistoryKey: string,
+    history: NavigationHistoryMode | "none",
+    nextNavigationKey: string,
   ): NavigationDirection {
     if (history === "push") {
       return "forward";
     }
 
-    if (history === "replace" || !this.current.historyKey) {
+    if (history === "replace" || !this.current.navigationKey) {
       return "none";
     }
 
-    if (this.current.historyKey === nextHistoryKey) {
+    if (this.current.navigationKey === nextNavigationKey) {
       return "none";
     }
 
-    const currentOrder = this.historyEntryOrders.get(this.current.historyKey);
-    const nextOrder = this.historyEntryOrders.get(nextHistoryKey);
+    const currentOrder = this.navigationEntryOrders.get(
+      this.current.navigationKey,
+    );
+    const nextOrder = this.navigationEntryOrders.get(nextNavigationKey);
     if (
       currentOrder === undefined ||
       nextOrder === undefined ||
@@ -1901,8 +1835,8 @@ export class Router extends EventTarget {
   }
 
   private resolveAttemptDirection(
-    history: HistoryMode | "none",
-    historyKey?: string,
+    history: NavigationHistoryMode | "none",
+    navigationKey?: string,
   ): NavigationDirection {
     if (history === "push") {
       return "forward";
@@ -1912,39 +1846,28 @@ export class Router extends EventTarget {
       return "none";
     }
 
-    const nextHistoryKey = historyKey || this.getCurrentHistoryEntryKey();
-    this.ensureHistoryEntryOrder(nextHistoryKey);
-    return this.resolveNavigationDirection("none", nextHistoryKey);
+    const nextNavigationKey = navigationKey ||
+      this.getCurrentNavigationEntryKey();
+    this.ensureNavigationEntryOrder(nextNavigationKey);
+    return this.resolveNavigationDirection("none", nextNavigationKey);
   }
 
   private navigate(
     target: string | URL | RouteLocation,
-    mode: HistoryMode,
+    mode: NavigationHistoryMode,
   ): void {
     const url = this.toRouteUrl(target);
-    const href = this.routeUrlToHref(url);
+    const href = `${url.pathname}${url.search}${url.hash}`;
 
     this.navigationApi.navigate(href, { history: mode });
   }
 
   private toRouteUrl(target: string | URL | RouteLocation): URL {
     if (target instanceof URL) {
-      return this.mode === "hash" &&
-          (isRouteHash(target.hash) || hasEmptyHashMarker(target.href))
-        ? this.browserUrlToRouteUrl(target)
-        : new URL(target.href);
+      return new URL(target.href);
     }
 
     if (typeof target === "string") {
-      const browser = browserWindow();
-      const externalUrl = new URL(target, browser.location.href);
-      if (
-        this.mode === "hash" &&
-        (isRouteHash(externalUrl.hash) || hasEmptyHashMarker(externalUrl.href))
-      ) {
-        return this.browserUrlToRouteUrl(externalUrl);
-      }
-
       return new URL(target, this.current.url.href);
     }
 
@@ -2011,51 +1934,6 @@ export class Router extends EventTarget {
       : `${this.basePath}${localPathname}`;
   }
 
-  private currentBrowserRouteUrl(): URL {
-    return this.browserUrlToRouteUrl(new URL(browserWindow().location.href));
-  }
-
-  private initialBrowserRouteUrl(): URL {
-    if (this.mode === "history") {
-      return this.currentBrowserRouteUrl();
-    }
-
-    const browser = browserWindow();
-    const browserUrl = new URL(browser.location.href);
-    if (browserUrl.hash && !hasEmptyHashMarker(browserUrl.href)) {
-      return this.browserUrlToRouteUrl(browserUrl);
-    }
-
-    return new URL(this.basePath, browser.location.origin);
-  }
-
-  private browserUrlToRouteUrl(url: URL): URL {
-    if (this.mode === "history") {
-      return new URL(url.href);
-    }
-
-    if (!url.hash || hasEmptyHashMarker(url.href)) {
-      return new URL(this.basePath, url.origin);
-    }
-
-    return hashRouteToUrl(url.hash, url.origin);
-  }
-
-  private hashDocumentPathname(): string {
-    return normalizePathname(browserWindow().location.pathname);
-  }
-
-  private routeUrlToHref(url: URL): string {
-    if (this.mode === "history") {
-      return `${url.pathname}${url.search}${url.hash}`;
-    }
-
-    const browser = browserWindow();
-    return `${this.hashDocumentPathname()}${browser.location.search}${
-      hashRouteHref(url)
-    }`;
-  }
-
   private resolve(url: URL): RouterChangeDetail | null {
     const pathname = normalizePathname(url.pathname);
     const localPathname = stripBasePath(pathname, this.basePath);
@@ -2117,28 +1995,13 @@ export class Router extends EventTarget {
       slotParams: Object.keys(slotParams).length ? slotParams : undefined,
       slots: Object.keys(slots).length ? slots : undefined,
       url,
-      historyKey: this.getCurrentHistoryEntryKey(),
+      navigationKey: this.getCurrentNavigationEntryKey(),
       direction: "none",
       toJSON: detailToJSON,
     };
   }
 
   private managesUrl(url: URL): boolean {
-    if (this.mode === "hash") {
-      if (stripBasePath(url.pathname, this.hashDocumentPathname()) === null) {
-        return false;
-      }
-
-      if (isRouteHash(url.hash) || hasEmptyHashMarker(url.href)) {
-        return stripBasePath(
-          this.browserUrlToRouteUrl(url).pathname,
-          this.basePath,
-        ) !== null;
-      }
-
-      return true;
-    }
-
     return stripBasePath(url.pathname, this.basePath) !== null;
   }
 
@@ -2217,12 +2080,12 @@ export class Router extends EventTarget {
 
       void this.routeTo(new URL(activeNavigation.url.href), {
         history: activeNavigation.history,
-        historyKey: activeNavigation.historyKey,
+        navigationKey: activeNavigation.navigationKey,
       });
       return;
     }
 
-    const currentUrl = this.currentBrowserRouteUrl();
+    const currentUrl = new URL(browserWindow().location.href);
     if (skipIfSame) {
       const nextDetail = this.resolve(currentUrl);
       if (
@@ -2260,10 +2123,10 @@ export class Router extends EventTarget {
 
   private async routeTo(
     url: URL,
-    options: RouteTransitionOptions & { historyKey?: string },
+    options: RouteTransitionOptions & { navigationKey?: string },
   ): Promise<void> {
     if (options.history !== "none") {
-      this.navigationApi.navigate(this.routeUrlToHref(url), {
+      this.navigationApi.navigate(`${url.pathname}${url.search}${url.hash}`, {
         history: options.history,
       });
       return;
@@ -2276,13 +2139,13 @@ export class Router extends EventTarget {
     const abortController = new AbortController();
     const direction = this.resolveAttemptDirection(
       options.history,
-      options.historyKey,
+      options.navigationKey,
     );
     this.activeNavigation = {
       id: currentNavigationId,
       url: new URL(url.href),
       history: options.history,
-      historyKey: options.historyKey,
+      navigationKey: options.navigationKey,
       detail: null,
       abortController,
     };
@@ -2314,7 +2177,7 @@ export class Router extends EventTarget {
       if (!decision.allowed) {
         this.restoreCancelledNavigation(
           url,
-          detail?.historyKey || options.historyKey,
+          detail?.navigationKey || options.navigationKey,
           direction,
         );
         return;
@@ -2341,7 +2204,7 @@ export class Router extends EventTarget {
         return;
       }
 
-      this.commitNavigation(detail, options.history, options.historyKey);
+      this.commitNavigation(detail, options.history, options.navigationKey);
     } finally {
       if (this.activeNavigation?.id === currentNavigationId) {
         this.activeNavigation = undefined;
@@ -2397,9 +2260,12 @@ export class Router extends EventTarget {
     redirectDepth: number,
   ): void {
     this.pendingRedirectDepths.set(redirect.to.href, redirectDepth);
-    this.navigationApi.navigate(this.routeUrlToHref(redirect.to), {
-      history: redirect.replace ? "replace" : "push",
-    });
+    this.navigationApi.navigate(
+      `${redirect.to.pathname}${redirect.to.search}${redirect.to.hash}`,
+      {
+        history: redirect.replace ? "replace" : "push",
+      },
+    );
   }
 
   private consumePendingRedirectDepth(url: URL): number {
@@ -2414,8 +2280,8 @@ export class Router extends EventTarget {
   ): boolean {
     if (
       options.history === "none" &&
-      this.current.historyKey &&
-      detail.historyKey !== this.current.historyKey
+      this.current.navigationKey &&
+      detail.navigationKey !== this.current.navigationKey
     ) {
       return false;
     }
@@ -2469,16 +2335,19 @@ export class Router extends EventTarget {
 
   private commitNavigation(
     detail: RouterChangeDetail,
-    history: HistoryMode | "none",
-    historyKey?: string,
+    history: NavigationHistoryMode | "none",
+    navigationKey?: string,
   ): void {
-    const nextHistoryKey = this.updateHistory(history, historyKey);
+    const nextNavigationKey = this.resolveCommittedNavigationKey(
+      history,
+      navigationKey,
+    );
     const committedDetail: RouterChangeDetail = {
       ...detail,
-      historyKey: nextHistoryKey,
+      navigationKey: nextNavigationKey,
       direction: this.resolveNavigationDirection(
         history,
-        nextHistoryKey,
+        nextNavigationKey,
       ),
     };
     this.current = committedDetail;
@@ -2491,9 +2360,9 @@ export class Router extends EventTarget {
     );
   }
 
-  private updateHistory(
-    history: HistoryMode | "none",
-    historyKey?: string,
+  private resolveCommittedNavigationKey(
+    history: NavigationHistoryMode | "none",
+    navigationKey?: string,
   ): string {
     if (history !== "none") {
       throw new Error(
@@ -2501,8 +2370,8 @@ export class Router extends EventTarget {
       );
     }
 
-    const nextKey = historyKey || this.getCurrentHistoryEntryKey();
-    this.ensureHistoryEntryOrder(nextKey);
+    const nextKey = navigationKey || this.getCurrentNavigationEntryKey();
+    this.ensureNavigationEntryOrder(nextKey);
     return nextKey;
   }
 
@@ -2678,21 +2547,23 @@ export class Router extends EventTarget {
 
   private restoreCancelledNavigation(
     attemptedUrl: URL,
-    attemptedHistoryKey: string | undefined,
+    attemptedNavigationKey: string | undefined,
     direction: NavigationDirection,
   ): void {
     if (
       direction === "none" ||
       !this.current.branch.length ||
-      attemptedUrl.href !== this.currentBrowserRouteUrl().href ||
+      attemptedUrl.href !== new URL(browserWindow().location.href).href ||
       attemptedUrl.href === this.current.url.href
     ) {
       return;
     }
 
-    const currentOrder = this.historyEntryOrders.get(this.current.historyKey);
-    const attemptedOrder = attemptedHistoryKey
-      ? this.historyEntryOrders.get(attemptedHistoryKey)
+    const currentOrder = this.navigationEntryOrders.get(
+      this.current.navigationKey,
+    );
+    const attemptedOrder = attemptedNavigationKey
+      ? this.navigationEntryOrders.get(attemptedNavigationKey)
       : undefined;
     if (
       currentOrder !== undefined &&
@@ -2712,7 +2583,8 @@ export class Router extends EventTarget {
 
   private restoreCancelledNavigationWithNavigationApi(): boolean {
     const navigationApi = this.navigationApi;
-    const href = this.routeUrlToHref(this.current.url);
+    const href =
+      `${this.current.url.pathname}${this.current.url.search}${this.current.url.hash}`;
     try {
       navigationApi.navigate(href, { history: "replace" });
       return true;

@@ -10,7 +10,7 @@ const globalScope = globalThis as typeof globalThis & {
   __litRouterNavigationMock?: TestNavigationMock;
 };
 
-const ROUTER_HISTORY_ENTRY_KEY = "__litRouterEntryKey";
+const ROUTER_NAVIGATION_ENTRY_KEY = "__litRouterEntryKey";
 
 const domGlobals = [
   "AbortController",
@@ -43,7 +43,7 @@ const domGlobals = [
   "Text",
 ] as const;
 
-type TestHistoryMode = "push" | "replace";
+type TestNavigationHistoryMode = "push" | "replace";
 
 interface TestNavigationEntry {
   key: string;
@@ -73,8 +73,11 @@ function historyStateWithKey(
   key: string,
 ): Record<string, unknown> {
   return state && typeof state === "object" && !Array.isArray(state)
-    ? { ...(state as Record<string, unknown>), [ROUTER_HISTORY_ENTRY_KEY]: key }
-    : { [ROUTER_HISTORY_ENTRY_KEY]: key };
+    ? {
+      ...(state as Record<string, unknown>),
+      [ROUTER_NAVIGATION_ENTRY_KEY]: key,
+    }
+    : { [ROUTER_NAVIGATION_ENTRY_KEY]: key };
 }
 
 function keyFromHistoryState(state: unknown): string | undefined {
@@ -82,7 +85,7 @@ function keyFromHistoryState(state: unknown): string | undefined {
     return undefined;
   }
 
-  const value = (state as Record<string, unknown>)[ROUTER_HISTORY_ENTRY_KEY];
+  const value = (state as Record<string, unknown>)[ROUTER_NAVIGATION_ENTRY_KEY];
   return typeof value === "string" && value ? value : undefined;
 }
 
@@ -150,7 +153,10 @@ class TestNavigationMock extends NativeEventTarget {
     );
   }
 
-  navigate(url: string, options?: { history?: TestHistoryMode }): void {
+  navigate(
+    url: string,
+    options?: { history?: TestNavigationHistoryMode },
+  ): void {
     const href = new URL(url, this.dom.location.href).href;
     const mode = options?.history === "replace" ? "replace" : "push";
     const key = mode === "replace"
@@ -194,7 +200,7 @@ class TestNavigationMock extends NativeEventTarget {
   syncHistoryMutation(
     state: unknown,
     url: string | URL | null | undefined,
-    mode: TestHistoryMode,
+    mode: TestNavigationHistoryMode,
   ): void {
     const href = url === null || url === undefined
       ? this.dom.location.href
@@ -203,7 +209,11 @@ class TestNavigationMock extends NativeEventTarget {
     this.commitEntry({ key, url: href }, mode);
   }
 
-  private commit(url: string, key: string, mode: TestHistoryMode): void {
+  private commit(
+    url: string,
+    key: string,
+    mode: TestNavigationHistoryMode,
+  ): void {
     this.commitEntry({ key, url }, mode);
     const state = historyStateWithKey(this.dom.history.state, key);
     if (mode === "replace") {
@@ -214,7 +224,10 @@ class TestNavigationMock extends NativeEventTarget {
     this.originalPushState(state, "", url);
   }
 
-  private commitEntry(entry: TestNavigationEntry, mode: TestHistoryMode): void {
+  private commitEntry(
+    entry: TestNavigationEntry,
+    mode: TestNavigationHistoryMode,
+  ): void {
     if (mode === "replace") {
       this.entries[this.index] = entry;
     } else {

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0 (Unreleased)
+
+### Removed
+
+- Hash routing mode and the `RouterOptions.mode` / `router.mode` API.
+
+### Changed
+
+- Rename `RouterChangeDetail.historyKey` to `navigationKey` to match the
+  Navigation API entry model.
+
 ## 1.1.2 (2026-05-16)
 
 ### Changed

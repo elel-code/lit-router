@@ -1,8 +1,12 @@
 # @elelcode/lit-router
 
-A modern router for Web Components and Lit, built around native browser
-capabilities such as `URLPattern`, the `Navigation API`, and the
+A Navigation API-first router for Web Components and Lit, built around native
+browser capabilities such as `URLPattern`, the `Navigation API`, and the
 `View Transitions API`.
+
+`lit-router` is Navigation API-first: it intercepts and commits same-document
+navigations through `window.navigation`, not `popstate`, `hashchange`, or direct
+`history.pushState()` / `history.replaceState()` calls.
 
 Docs:
 
@@ -10,6 +14,7 @@ Docs:
 - Chinese guide: [docs/guide.zh-CN.md](./docs/guide.zh-CN.md)
 - English API reference: [docs/api.md](./docs/api.md)
 - 中文 API 参考: [docs/api.zh-CN.md](./docs/api.zh-CN.md)
+- v2 migration guide: [docs/migration-v2.md](./docs/migration-v2.md)
 - Changelog: [CHANGELOG.md](./CHANGELOG.md)
 
 ## Highlights
@@ -21,6 +26,8 @@ Docs:
 - Guard redirects, leave guards, lazy loading, and route commits are race-safe.
 - RouterView exposes direction-aware commits, fallback slots, and loading
   lifecycle events without adding wrapper components.
+- Navigation is driven by the Navigation API, with per-entry keys used for
+  direction and scroll restoration.
 - Same-origin link interception is limited to the configured `basePath`.
 - Route components receive an explicit `RouteContext` contract.
 
@@ -46,6 +53,7 @@ deno task test
 - [中文指南](./docs/guide.zh-CN.md)
 - [English API reference](./docs/api.md)
 - [中文 API 参考](./docs/api.zh-CN.md)
+- [v2 Migration Guide](./docs/migration-v2.md)
 - [Slot outlets design](./docs/slot-outlets-design.md)
 - [Changelog](./CHANGELOG.md)
 
@@ -264,42 +272,6 @@ const namedMatch = router.resolveNamed("user-detail", {
 });
 ```
 
-Use hash routing when the deployment host cannot rewrite all application URLs to
-the app shell:
-
-```ts
-const router = new Router({
-  mode: "hash",
-  basePath: "/app",
-  routes,
-});
-
-router.link({ name: "user-detail", params: { id: "123" } });
-// "/#/app/users/123"
-```
-
-In hash mode, route matching, guards, query parsing, and `RouteContext` use the
-path inside `#`. `basePath` stays part of the route path, so switching between
-history and hash modes moves `/app/users/123` between the browser pathname and
-the hash payload without changing the route tree.
-
-When a WebView starts at an entry document such as `/index.html`, hash mode
-matches the configured base route without rewriting the first URL. Generated
-links keep using the same document path.
-
-URL shapes:
-
-| Configuration                      | History URL     | Hash URL                    |
-| ---------------------------------- | --------------- | --------------------------- |
-| `basePath: "/"`                    | `/settings`     | `/#/settings`               |
-| `basePath: "/"` root               | `/`             | `/#`                        |
-| `basePath: "/app"`                 | `/app/settings` | `/#/app/settings`           |
-| WebView entry + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
-
-Hash mode uses the Navigation API. Plain document fragments such as `#section`
-are not treated as route links, and hash paths outside `basePath` are left to
-the browser.
-
 Named reverse routing supports literal segments, `:param`, `:param(<pattern>)`,
 `*`, and optional `?` tokens such as `:lang?/docs`. Route tokens with `+` or `*`
 modifiers are still rejected during `router.link()` generation.
@@ -307,8 +279,7 @@ modifiers are still rejected during `router.link()` generation.
 Anchor navigation:
 
 - Same-origin links inside the configured `basePath` are intercepted.
-- In hash mode, router links use `#/path` and plain fragments such as `#section`
-  are left to the browser.
+- Plain fragments such as `#section` are left to the browser.
 - Same-origin links outside `basePath` fall back to the browser.
 - Both HTML and SVG `<a>` elements are supported.
 - Add `data-router-replace` to an anchor to use replace-style navigation.
@@ -352,7 +323,7 @@ Focus handling:
 
 Scroll and hash behavior:
 
-- Scroll restoration is tracked per history entry, not just by URL.
+- Scroll restoration is tracked per Navigation API entry, not just by URL.
 - Hash targets are resolved with `document.getElementById()`.
 - If an anchor lives inside a component shadow tree, expose that `id` on the
   host element in light DOM so hash scrolling stays O(1).
@@ -432,10 +403,11 @@ Key files:
   `npm publish` workflow.
 - The router intentionally depends on the native `URLPattern` API. Use a modern
   browser baseline or load a `URLPattern` polyfill before `router.start()`.
-- The router requires the `Navigation API` for same-document navigations.
+- The router requires the `Navigation API` for same-document navigations and
+  does not provide a History API or hash routing fallback.
 - Only one started `Router` instance is supported per document at a time.
 - Route guards, lazy loaders, and route commits are async and race-aware.
-- History-entry direction bookkeeping is bounded instead of growing without
+- Navigation entry direction bookkeeping is bounded instead of growing without
   limit during very long-lived sessions.
 - `router-view` keeps a bounded scroll-position cache instead of allowing
   unbounded growth during long sessions.

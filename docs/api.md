@@ -1,6 +1,7 @@
 # API Reference
 
 This document describes the public surface exported from `@elelcode/lit-router`.
+For breaking changes from v1, see the [v2 Migration Guide](./migration-v2.md).
 
 Import both the class API and the custom element registration:
 
@@ -22,6 +23,7 @@ import {
   type RouteDefinition,
   type RouteErrorDetail,
   type RouteGuard,
+  type RouteGuardRedirect,
   type RouteGuardResult,
   type RouteInsertOptions,
   type RouteLeaveGuard,
@@ -43,7 +45,7 @@ import {
   type RouterEventMap,
   type RouterLinkAttributes,
   type RouterLinkOptions,
-  type RouterMode,
+  type RouterOptions,
   type RouterSlotDetail,
   type RouterSlotDetailJson,
   RouterView,
@@ -73,17 +75,16 @@ Constructor options:
 
 - `routes?: RouteDefinition[]`
 - `basePath?: string`
-- `mode?: "history" | "hash"`
 - `beforeRoute?: RouteGuard`
 - `autoStart?: boolean`
 
 Notes:
 
 - `basePath` defaults to `"/"`.
-- `mode` defaults to `"history"`. In `"hash"` mode, route paths live after `#`
-  (for example `/#/app/settings`) so static hosts do not need rewrite rules.
-- The router requires the Navigation API for same-document navigations,
-  including hash-mode route changes.
+- The router requires the Navigation API for same-document navigations.
+- Navigations are committed from Navigation API `navigate` events. The router
+  does not use `popstate`, `hashchange`, or direct History API mutation as a
+  routing fallback.
 - Only one started `Router` instance is supported per document.
 - Use `configure()` to update router options after construction.
 
@@ -108,28 +109,6 @@ Returns a mutable cloned snapshot of the current route tree.
 
 Current base path. Prefer `configure({ basePath })` when changing it at runtime
 so the router refreshes immediately.
-
-In hash mode, `basePath` remains part of the application route path, but that
-path is read from the hash payload. For example, `basePath: "/app"` matches
-`/#/app/settings` instead of `/app/settings`.
-
-#### `router.mode: RouterMode`
-
-Current routing mode. `"history"` uses the browser pathname. `"hash"` uses
-`#/path?query#fragment`, so the same `basePath` and route tree can move between
-history URLs such as `/app/settings` and hash URLs such as `/#/app/settings`. If
-the initial document URL has no route hash, hash mode treats it as the
-configured base route without rewriting the first URL.
-
-Common URL shapes:
-
-| Configuration                      | History URL     | Hash URL                    |
-| ---------------------------------- | --------------- | --------------------------- |
-| `basePath: "/"` root               | `/`             | `/#`                        |
-| `basePath: "/"` route              | `/settings`     | `/#/settings`               |
-| `basePath: "/app"` root            | `/app`          | `/#/app`                    |
-| `basePath: "/app"` route           | `/app/settings` | `/#/app/settings`           |
-| WebView entry + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
 
 #### `router.beforeRoute?: RouteGuard`
 
@@ -175,7 +154,6 @@ Supported fields:
 
 - `routes`
 - `basePath`
-- `mode`
 - `beforeRoute`
 
 #### `router.setRoutes(routes): void`
@@ -272,9 +250,7 @@ Accepted inputs are the same as `push()`.
 #### `router.resolveUrl(url): RouterChangeDetail | null`
 
 Resolves a string or `URL` without navigating. Returns `null` when the URL is
-outside `basePath` or no route branch matches. Hash mode accepts both route URLs
-such as `/app/settings/profile` and browser URLs such as
-`/#/app/settings/profile`.
+outside `basePath` or no route branch matches.
 
 ```ts
 const match = router.resolveUrl("/settings/profile");
@@ -307,10 +283,6 @@ const href = router.link({
 Notes:
 
 - Requires a route `name`.
-- In hash mode, returns an href with the route encoded after `#`, for example
-  `/#/app/messages/42?tab=activity#summary`.
-- A root route in hash mode emits `#` when `basePath` is `"/"`, and `#/app` when
-  `basePath` is `"/app"`.
 - Supports literal segments, `:param`, `:param(<pattern>)`, `*`, and optional
   `?` tokens such as `:lang?/docs`.
 - Rejects `+` and `*` parameter modifiers during reverse routing.
@@ -328,9 +300,7 @@ const attrs = router.linkAttributes(
 // { href: "/messages/42", "data-router-replace": "" }
 ```
 
-In hash mode, plain fragments such as `#section` are left to the browser.
-Route-looking hashes outside `basePath`, such as `/#/outside` when
-`basePath: "/app"`, are also not intercepted.
+Plain fragments such as `#section` are left to the browser.
 
 ### Events
 
@@ -545,7 +515,7 @@ After a successful route commit:
 
 - the outlet first tries to focus `[data-route-focus]`
 - otherwise it focuses the viewport itself
-- scroll restoration is tracked per history entry
+- scroll restoration is tracked per Navigation API entry
 - hash scrolling uses `document.getElementById()` only
 
 If an anchor target lives inside a shadow tree, expose the same `id` on the host
@@ -637,7 +607,7 @@ interface RouterLinkAttributes {
 }
 ```
 
-### `RouteGuardResult`
+### `RouteGuardRedirect` / `RouteGuardResult`
 
 Route guards and leave guards may return:
 
@@ -653,6 +623,15 @@ Semantics:
 - `true` or `undefined`: allow navigation
 - `false`: block navigation
 - redirect values: redirect immediately
+
+```ts
+type RouteGuardRedirect =
+  | string
+  | URL
+  | { to: string | URL; replace?: boolean };
+
+type RouteGuardResult = boolean | void | RouteGuardRedirect;
+```
 
 ### `RouteGuard`
 
@@ -777,7 +756,7 @@ interface RouterChangeDetail {
     params: Record<string, string>;
   }>;
   url: URL;
-  historyKey: string;
+  navigationKey: string;
   direction: "forward" | "backward" | "none";
   toJSON?: () => RouterChangeDetailJson;
 }
@@ -794,7 +773,8 @@ Field notes:
 - `slots`: slot-aware detail map including the main `"route-child"` slot
 - `toJSON`: serializes `query` as a plain object and `url` as a string for
   `JSON.stringify(detail)`
-- `historyKey`: internal key for per-entry direction and scroll tracking
+- `navigationKey`: internal key for Navigation API entry direction and scroll
+  tracking
 - `direction`: computed navigation direction
 
 ### `RouterSlotDetail`
@@ -857,7 +837,9 @@ interface RouteTreeChangeDetail {
 
 - Modern browser only. `URLPattern` is required.
 - The router is designed for same-document SPA navigation, not SSR.
+- The Navigation API is the only routing transport; History API and hash routing
+  fallbacks are intentionally out of scope.
 - Same-origin anchor interception is limited to the configured `basePath`.
 - Lazy loads and navigation commits are race-safe.
-- History direction bookkeeping is bounded instead of growing forever.
+- Navigation entry direction bookkeeping is bounded instead of growing forever.
 - `load()` is deduplicated per route while a pending import is in flight.

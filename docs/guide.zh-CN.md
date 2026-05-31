@@ -15,6 +15,11 @@
 
 如果你的应用就是现代浏览器单 SPA，这套模型会比传统框架式路由更直接。
 
+路由模型以 Navigation API 为唯一入口：监听 `navigate` 事件，在 Navigation API
+接受跳转后提交路由状态，并使用 `navigation.currentEntry.key` 做 entry 级别的方向
+与滚动状态跟踪。它不维护并行的 `popstate`、`hashchange` 或直接
+`history.pushState()` 路由路径。
+
 当前功能层面也支持运行时按分支插入、删除、替换 `route tree`，适合权限路由、
 特性开关、插件式页面装配这类场景。
 
@@ -23,6 +28,7 @@
 - 英文指南：[guide.md](./guide.md)
 - 英文 API 参考：[api.md](./api.md)
 - 中文 API 参考：[api.zh-CN.md](./api.zh-CN.md)
+- v2 迁移指南：[migration-v2.md](./migration-v2.md)
 - Slot 多出口设计：[slot-outlets-design.md](./slot-outlets-design.md)
 - 变更日志：[CHANGELOG.md](../CHANGELOG.md)
 - 完整示例：[examples/minimal/main.ts](../examples/minimal/main.ts)
@@ -243,38 +249,6 @@ const href = router.link({
 
 如果链接不属于当前 `basePath`，会自动回退到浏览器原生跳转。
 
-### Hash 模式
-
-如果静态托管环境无法把所有路由 URL rewrite 到应用入口，可以使用 `mode: "hash"`：
-
-```ts
-const router = new Router({
-  mode: "hash",
-  basePath: "/app",
-  routes,
-});
-```
-
-生成的链接形如 `/#/app/settings/profile`。路由会匹配 `#` 内的 path、query 和
-fragment，其中包含配置的 `basePath`。
-
-常见 URL 形态：
-
-| 配置                              | History URL     | Hash URL                    |
-| --------------------------------- | --------------- | --------------------------- |
-| `basePath: "/"` 根路由            | `/`             | `/#`                        |
-| `basePath: "/"` 子路由            | `/settings`     | `/#/settings`               |
-| `basePath: "/app"` 根路由         | `/app`          | `/#/app`                    |
-| `basePath: "/app"` 子路由         | `/app/settings` | `/#/app/settings`           |
-| WebView 入口 + `basePath: "/app"` | n/a             | `/index.html#/app/settings` |
-
-对 Wails、Tauri 和其他 WebView 壳来说，从 `/index.html` 启动没有问题。hash
-模式会把首次 URL 当作配置的 base route，不会改写它；之后生成的链接继续保留
-`/index.html`，只改变 hash。
-
-hash 模式使用 Navigation API。`#section` 这类普通文档片段，以及不在当前
-`basePath` 内的 hash 路径，不会被路由接管。
-
 如果要走 replace 语义：
 
 ```html
@@ -384,7 +358,7 @@ router.configure({ routes, basePath, beforeRoute });
 
 额外行为：
 
-- 滚动恢复绑定的是 history entry，不只是 URL
+- 滚动恢复绑定的是 Navigation API entry，不只是 URL
 - hash 锚点只走 `document.getElementById()`
 - 如果锚点在组件 shadow tree 内部，请把对应 `id` 暴露到 host 上，这样查找仍然是
   O(1)
@@ -437,13 +411,13 @@ router.addEventListener("route-error", (event) => {
 - 现代浏览器
 - 单文档单 SPA
 - 原生 `URLPattern` 可用
-- history entry 方向缓存是有界的，不会在超长会话里无限增长
+- Navigation API entry 方向缓存是有界的，不会在超长会话里无限增长
 - 不做 SSR
 
 额外注意：
 
 - 同一个 document 里只支持一个已启动的 `Router`
-- 路由要求浏览器提供 `Navigation API`
+- 路由要求浏览器提供 `Navigation API`，没有 History API 或 hash 路由 fallback
 - `router-view` 内部有滚动缓存，但已经做了有界限制，不会无限增长
 - 当前发布链路是 Deno-first + JSR-first
 
@@ -476,8 +450,8 @@ router.addEventListener("route-error", (event) => {
 额外注意：
 
 - 同一个 document 内只支持一个已启动的 `Router`
-- 路由要求浏览器提供 `Navigation API`
-- history entry 方向缓存和 `router-view` 滚动缓存都是有界的
+- 路由要求浏览器提供 `Navigation API`，没有 History API 或 hash 路由 fallback
+- Navigation API entry 方向缓存和 `router-view` 滚动缓存都是有界的
 - `load()` 的 Promise 返回值不会注入组件上下文，它只承担代码分割或副作用职责
 - 这套核心不覆盖 SSR，也不内建激活链接之类的壳层能力
 

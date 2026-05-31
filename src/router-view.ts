@@ -50,7 +50,7 @@ export class RouterView extends LitElement {
     params: {},
     branch: [],
     url: new URL(browserWindow().location.href),
-    historyKey: "",
+    navigationKey: "",
     direction: "none",
   };
 
@@ -781,11 +781,11 @@ export class RouterView extends LitElement {
   }
 
   private captureScrollPosition(detail: RouterChangeDetail): void {
-    this.scrollManager.capture(detail.historyKey, detail.url);
+    this.scrollManager.capture(detail.navigationKey, detail.url);
   }
 
   private restoreScrollPosition(detail: RouterChangeDetail): void {
-    this.scrollManager.restore(detail.historyKey, detail.url);
+    this.scrollManager.restore(detail.navigationKey, detail.url);
   }
 
   private moveFocusIntoRoute(

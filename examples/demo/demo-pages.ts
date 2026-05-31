@@ -2,6 +2,15 @@ import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { RouteContext, RouterChangeDetail } from "../../src/router.ts";
 
+const DEMO_ROUTE_SNIPPET = `{
+  path: "settings",
+  component: "demo-settings-layout",
+  children: [
+    { path: "", component: "demo-settings-home" },
+    { path: "profile", component: "demo-settings-profile" }
+  ]
+}`;
+
 class RouteAwareElement extends LitElement {
   @property({ attribute: false })
   accessor routeContext: RouteContext | undefined;
@@ -63,14 +72,7 @@ export class DemoOverviewPage extends RouteAwareElement {
           路由定义完全在 TypeScript 里声明，router 根据路由树实例化 Web Components，
           不再依赖 HTML 上的 ${"`data-route`"}。
         </p>
-        <pre><code>{
-          path: "settings",
-          component: "demo-settings-layout",
-          children: [
-            { path: "", component: "demo-settings-home" },
-            { path: "profile", component: "demo-settings-profile" }
-          ]
-        }</code></pre>
+        <pre><code>${DEMO_ROUTE_SNIPPET}</code></pre>
       </section>
     `;
   }
